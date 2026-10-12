@@ -1,4 +1,5 @@
 const svc = require('../services/bookings');
+const { emitBooking } = require('../sockets');
 
 async function create(req, res) {
   const { type, distanceKm, vehicleId, spaceId, hours, pickupLat, pickupLng, dropLat, dropLng, commissionBps } = req.body || {};
@@ -22,15 +23,21 @@ async function get(req, res) {
 }
 
 async function accept(req, res) {
-  return res.json({ booking: await svc.acceptBooking(req.params.id, req.user.id) });
+  const booking = await svc.acceptBooking(req.params.id, req.user.id);
+  emitBooking(req.app.get('io'), booking);
+  return res.json({ booking });
 }
 
 async function cancel(req, res) {
-  return res.json({ booking: await svc.cancelBooking(req.params.id, req.user.id) });
+  const booking = await svc.cancelBooking(req.params.id, req.user.id);
+  emitBooking(req.app.get('io'), booking);
+  return res.json({ booking });
 }
 
 async function complete(req, res) {
-  return res.json({ booking: await svc.completeBooking(req.params.id, req.user.id) });
+  const booking = await svc.completeBooking(req.params.id, req.user.id);
+  emitBooking(req.app.get('io'), booking);
+  return res.json({ booking });
 }
 
 module.exports = { create, list, get, accept, cancel, complete };

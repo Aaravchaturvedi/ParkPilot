@@ -1,8 +1,10 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const { initSockets } = require('./sockets');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -40,6 +42,12 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.status ? err.message : 'internal_error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`[backend] listening on :${PORT}`);
-});
+const server = http.createServer(app);
+const io = initSockets(server);
+app.set('io', io);
+
+if (require.main === module) {
+  server.listen(PORT, () => console.log(`[backend] http+socket listening on :${PORT}`));
+}
+
+module.exports = { app, server, io };
