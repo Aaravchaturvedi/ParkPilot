@@ -64,4 +64,14 @@ async function me(req, res) {
   return res.json({ user });
 }
 
-module.exports = { register, login, refresh, me };
+// Mock KYC submit (Digio/Hyperverge integration is post-MVP Phase B).
+async function submitKyc(req, res) {
+  const user = await prisma.user.update({
+    where: { id: req.user.id },
+    data: { kycStatus: 'SUBMITTED' },
+    select: PUBLIC_USER,
+  });
+  return res.json({ user });
+}
+
+module.exports = { register, login, refresh, me, submitKyc };

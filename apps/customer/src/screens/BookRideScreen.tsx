@@ -3,7 +3,7 @@ import { View, Text, TextInput, StyleSheet } from 'react-native';
 import type { Booking, BookingStatus, DriverQuote } from '../../../../packages/types/src';
 import { createBooking, quoteDriver } from '../../../../packages/api/src/index';
 import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
-import { connectSocket } from '../socket';
+import { connectSocket } from '../../../../packages/mobile/src/socket';
 
 // MVP: customer enters trip km (device GPS routing is post-MVP).
 export function BookRideScreen({ apiURL, token, onTracking }: { apiURL: string; token: string; onTracking: (bookingId: string) => void }): React.JSX.Element {

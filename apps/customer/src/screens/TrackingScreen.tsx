@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
 import { listBookings, payBooking } from '../../../../packages/api/src/index';
 import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
-import { connectSocket } from '../socket';
+import { connectSocket } from '../../../../packages/mobile/src/socket';
 
 interface DriverPing {
   driverId: string;

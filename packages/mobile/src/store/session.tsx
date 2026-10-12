@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { User } from '../../../../packages/types/src';
-import { initApi, login as apiLogin, logout as apiLogout, me, register as apiRegister, setAccessToken } from '../../../../packages/api/src/index';
+import type { User } from '../../../types/src';
+import { initApi, login as apiLogin, logout as apiLogout, me, register as apiRegister, setAccessToken } from '../../../api/src/index';
 import { loadSession, saveSession, clearSession } from '../storage/sessionStore';
 
 interface Session {

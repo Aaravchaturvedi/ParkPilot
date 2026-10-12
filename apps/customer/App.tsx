@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SessionProvider, useSession } from './src/store/session';
-import { LoginScreen } from './src/screens/LoginScreen';
-import { RegisterScreen } from './src/screens/RegisterScreen';
+import { SessionProvider, useSession, LoginScreen, RegisterScreen } from '../../packages/mobile/src';
 import { MapScreen } from './src/screens/MapScreen';
 import { BookRideScreen } from './src/screens/BookRideScreen';
 import { ParkingScreen } from './src/screens/ParkingScreen';

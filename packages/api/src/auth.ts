@@ -18,6 +18,11 @@ export async function me(): Promise<{ user: User }> {
   return data;
 }
 
+export async function submitKyc(): Promise<{ user: User }> {
+  const { data } = await api().patch('/auth/kyc');
+  return data;
+}
+
 export function logout(): void {
   setAccessToken(null);
 }

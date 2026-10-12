@@ -99,7 +99,7 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 
 **Day-by-day:**
 
-- **Day 15 — Partner Shell:** `apps/partner` + auth reuse + KYC mock screen. Done when partner login works.
+- **Day 15 — Partner Shell ✅ DONE:** `apps/partner` + auth reuse + KYC mock screen. Done when partner login works.
 - **Day 16 — Requests:** Online/offline toggle + incoming request + accept/reject via socket. Done when it receives Day 12 requests.
 - **Day 17 — Active Ride:** Ride dashboard + `expo-location` broadcast + earnings wallet UI. Done when real GPS streams.
 - **Day 18 — Host Flow:** List space, availability, bookings management. Done when P2P parking CRUD works.

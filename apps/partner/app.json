@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "ParkPilot Partner",
+    "slug": "parkpilot-partner",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "plugins": [
+      [
+        "expo-location",
+        { "locationAlwaysAndWhenInUsePermission": "ParkPilot Partner broadcasts your location to customers while you are online." }
+      ]
+    ]
+  }
+}

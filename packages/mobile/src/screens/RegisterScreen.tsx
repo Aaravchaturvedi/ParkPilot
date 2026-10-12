@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Button, Field } from '../../../../packages/ui/src';
+import { Button, Field } from '../../../ui/src';
 import { useSession } from '../store/session';
 
 export function RegisterScreen({ onSwitch }: { onSwitch: () => void }): React.JSX.Element {
