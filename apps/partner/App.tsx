@@ -4,12 +4,14 @@ import { StatusBar } from 'expo-status-bar';
 import type { KycStatus } from '../../packages/types/src';
 import { SessionProvider, useSession, LoginScreen, RegisterScreen } from '../../packages/mobile/src';
 import { KycScreen } from './src/screens/KycScreen';
+import { RequestsScreen } from './src/screens/RequestsScreen';
 
 const API_URL = 'http://localhost:4000';
 
 function Shell(): React.JSX.Element {
-  const { user, ready, logout } = useSession();
+  const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'requests' | 'kyc'>('requests');
   const [kyc, setKyc] = useState<KycStatus | null>(null);
 
   if (!ready) {
@@ -36,14 +38,29 @@ function Shell(): React.JSX.Element {
       </View>
     );
   }
-  // Day 16 (requests) + Day 17 (active ride + wallet) plug in here.
+  // Day 16: requests inbox. Day 17 adds active ride + wallet tabs.
+  if (!token) {
+    return (
+      <View style={styles.center}>
+        <Text>Restoring session…</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Partner · {user.name}</Text>
-      <KycScreen status={kyc ?? user.kycStatus} onChanged={setKyc} />
-      <Text onPress={logout} style={styles.link}>
-        Sign out
-      </Text>
+      {tab === 'requests' ? <RequestsScreen apiURL={API_URL} token={token} /> : <KycScreen status={kyc ?? user.kycStatus} onChanged={setKyc} />}
+      <View style={styles.tabs}>
+        <Text onPress={() => setTab('requests')} style={tab === 'requests' ? styles.tabOn : styles.tab}>
+          Requests
+        </Text>
+        <Text onPress={() => setTab('kyc')} style={tab === 'kyc' ? styles.tabOn : styles.tab}>
+          KYC
+        </Text>
+        <Text onPress={logout} style={styles.tab}>
+          Out
+        </Text>
+      </View>
       <StatusBar />
     </View>
   );
@@ -61,5 +78,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
   root: { flex: 1, paddingTop: 48 },
   title: { fontSize: 20, fontWeight: '700', paddingHorizontal: 16 },
+  tabs: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderTopWidth: 1, borderColor: '#e5e7eb' },
+  tab: { color: '#6b7280', fontWeight: '600' },
+  tabOn: { color: '#111827', fontWeight: '700' },
   link: { color: '#2563eb', textAlign: 'center', padding: 12 },
 });
