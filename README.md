@@ -56,11 +56,25 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 - Build JWT-based authentication endpoints.
 - Implement basic REST endpoints to handle the 20%-25% platform commission and 75%-80% partner split logic.
 
+**Day-by-day:**
+
+- **Day 1 — Repo & Infra:** Init `backend/`, `docker-compose.yml` (Node, PostgreSQL, Redis), Prisma setup. Done when `docker compose up` runs clean.
+- **Day 2 — Auth:** `Users` schema + JWT register/login/refresh + bcrypt. Done when tested via Postman.
+- **Day 3 — Domain Schemas:** `Vehicles`, `ParkingSpaces`, `Bookings` + commission split (20-25% / 75-80%). Done when migrations pass.
+- **Day 4 — REST Core:** `POST /bookings`, `GET /pricing`, `GET /wallet` (mock). Done when full booking CRUD works without realtime.
+
 ### Days 5-8: Real-Time Engine
 
 - Set up the Node.js Socket.io server.
 - Create socket events for `DRIVER_LOCATION_UPDATE` and `CUSTOMER_LOCATION_SUBSCRIBE`.
 - Implement a mock Node.js script to simulate a moving driver sending lat/lng data.
+
+**Day-by-day:**
+
+- **Day 5 — Sockets Setup:** Socket.io server + auth middleware + rooms (`driver:{id}`, `booking:{id}`). Done when client connects.
+- **Day 6 — Location Stream:** `DRIVER_LOCATION_UPDATE` -> Redis + `CUSTOMER_LOCATION_SUBSCRIBE` broadcast. Done when location flows end-to-end.
+- **Day 7 — Dispatch:** Nearby driver query + `BOOKING_REQUEST`, `BOOKING_ACCEPT/REJECT`. Done when request reaches driver.
+- **Day 8 — Simulator:** Mock driver script sending lat/lng. Done when map shows moving point with <1s latency.
 
 ### Days 9-14: Monorepo Setup & Customer App
 
@@ -68,11 +82,29 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 - Integrate `react-native-maps` inside the `apps/customer` directory.
 - Build the UI to display vehicle pricing (₹8/KM for drivers, ₹60-₹100/hr for car parking).
 
+**Day-by-day:**
+
+- **Day 9 — Monorepo Init:** Yarn Workspaces `apps/customer`, `packages/ui,api,types,config` + ESLint/Prettier/tsconfig. Done when `yarn customer start` runs.
+- **Day 10 — Auth UI:** Navigation + auth screens + `packages/api` Axios integration. Done when login persists session.
+- **Day 11 — Maps:** `react-native-maps` + permissions + parking/driver list UI. Done when maps render.
+- **Day 12 — Booking Flow:** Request driver UI + pricing display + socket subscribe. Done when customer can request a driver.
+- **Day 13 — Tracking & Pay:** Live tracking screen + mock payment. Done when customer loop is closable.
+- **Day 14 — SharedPolish:** Harden `packages/ui` + `types/BookingStatus`. Done when no duplicated components.
+
 ### Days 15-20: Partner App & End-to-End Testing
 
 - Build the `apps/partner` interface focusing on the active ride dashboard and earnings wallet.
 - Connect the Partner app to the device's native geolocation API to broadcast real-world coordinates.
 - Execute full physical tests using two separate smartphones to validate live map updates.
+
+**Day-by-day:**
+
+- **Day 15 — Partner Shell:** `apps/partner` + auth reuse + KYC mock screen. Done when partner login works.
+- **Day 16 — Requests:** Online/offline toggle + incoming request + accept/reject via socket. Done when it receives Day 12 requests.
+- **Day 17 — Active Ride:** Ride dashboard + `expo-location` broadcast + earnings wallet UI. Done when real GPS streams.
+- **Day 18 — Host Flow:** List space, availability, bookings management. Done when P2P parking CRUD works.
+- **Day 19 — Integration:** Docker full-stack integration, both apps vs backend, fix CORS/socket/auth bugs.
+- **Day 20 — Field Test:** 2-phone physical test, bugfix, demo video. Note: `admin-web/` deferred to post-MVP.
 
 ## 4. Retrospective: What We Accomplished in 20 Days
 
