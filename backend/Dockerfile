@@ -13,4 +13,5 @@ COPY prisma ./prisma
 RUN npx prisma generate
 COPY src ./src
 EXPOSE 4000
-CMD ["node", "src/index.js"]
+# Migrate on boot so fresh volumes/ deploys always have tables (Day 19).
+CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
