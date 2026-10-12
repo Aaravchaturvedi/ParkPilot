@@ -47,6 +47,7 @@ function initSockets(httpServer) {
     });
 
     require('./location').registerLocationHandlers(io, socket);
+    require('./dispatch').registerDispatchHandlers(io, socket);
   });
 
   return io;

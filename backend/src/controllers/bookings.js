@@ -1,5 +1,6 @@
 const svc = require('../services/bookings');
 const { emitBooking } = require('../sockets');
+const { dispatchNewBooking } = require('../sockets/dispatch');
 
 async function create(req, res) {
   const { type, distanceKm, vehicleId, spaceId, hours, pickupLat, pickupLng, dropLat, dropLng, commissionBps } = req.body || {};
@@ -11,7 +12,8 @@ async function create(req, res) {
   } else {
     return res.status(400).json({ error: 'type_must_be_DRIVER_or_PARKING' });
   }
-  return res.status(201).json({ booking });
+  const notified = await dispatchNewBooking(req.app.get('io'), booking);
+  return res.status(201).json({ booking, notified });
 }
 
 async function list(req, res) {
