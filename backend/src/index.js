@@ -13,7 +13,13 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 const authRoutes = require('./routes/auth');
+const bookingRoutes = require('./routes/bookings');
+const pricingRoutes = require('./routes/pricing');
+const walletRoutes = require('./routes/wallet');
 app.use('/auth', authRoutes);
+app.use('/bookings', bookingRoutes);
+app.use('/pricing', pricingRoutes);
+app.use('/wallet', walletRoutes);
 
 // Day 1 health checks. DB/Redis checks added Day 4+.
 app.get('/health', (_req, res) => {
@@ -31,7 +37,7 @@ app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   console.error('[backend] error:', err.message);
-  res.status(500).json({ error: 'internal_error' });
+  res.status(err.status || 500).json({ error: err.status ? err.message : 'internal_error' });
 });
 
 app.listen(PORT, () => {

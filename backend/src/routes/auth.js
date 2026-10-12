@@ -1,9 +1,9 @@
 const { Router } = require('express');
 const requireAuth = require('../middleware/requireAuth');
+const { ah } = require('../middleware/async');
 const auth = require('../controllers/auth');
 
 const router = Router();
-const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 router.post('/register', ah(auth.register));
 router.post('/login', ah(auth.login));
