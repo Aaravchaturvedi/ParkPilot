@@ -9,7 +9,7 @@ interface Incoming {
   at: number;
 }
 
-export function RequestsScreen({ apiURL, token }: { apiURL: string; token: string }): React.JSX.Element {
+export function RequestsScreen({ apiURL, token, onActive }: { apiURL: string; token: string; onActive: (bookingId: string) => void }): React.JSX.Element {
   const [online, setOnline] = useState(false);
   const [incoming, setIncoming] = useState<Incoming[]>([]);
   const [active, setActive] = useState<Booking | null>(null);
@@ -39,7 +39,10 @@ export function RequestsScreen({ apiURL, token }: { apiURL: string; token: strin
       return;
     }
     setIncoming((list) => list.filter((i) => i.booking.id !== id));
-    if (ack.booking) setActive(ack.booking);
+    if (ack.booking) {
+      setActive(ack.booking);
+      onActive(ack.booking.id);
+    }
   };
 
   const reject = async (id: string): Promise<void> => {

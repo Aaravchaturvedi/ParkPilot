@@ -5,14 +5,22 @@ import type { KycStatus } from '../../packages/types/src';
 import { SessionProvider, useSession, LoginScreen, RegisterScreen } from '../../packages/mobile/src';
 import { KycScreen } from './src/screens/KycScreen';
 import { RequestsScreen } from './src/screens/RequestsScreen';
+import { RideScreen } from './src/screens/RideScreen';
+import { WalletScreen } from './src/screens/WalletScreen';
 
 const API_URL = 'http://localhost:4000';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [tab, setTab] = useState<'requests' | 'kyc'>('requests');
+  const [tab, setTab] = useState<'requests' | 'ride' | 'wallet' | 'kyc'>('requests');
+  const [rideId, setRideId] = useState<string | null>(null);
   const [kyc, setKyc] = useState<KycStatus | null>(null);
+
+  const goRide = (id: string): void => {
+    setRideId(id);
+    setTab('ride');
+  };
 
   if (!ready) {
     return (
@@ -38,7 +46,7 @@ function Shell(): React.JSX.Element {
       </View>
     );
   }
-  // Day 16: requests inbox. Day 17 adds active ride + wallet tabs.
+  // Day 17: ride + wallet tabs.
   if (!token) {
     return (
       <View style={styles.center}>
@@ -49,10 +57,24 @@ function Shell(): React.JSX.Element {
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Partner · {user.name}</Text>
-      {tab === 'requests' ? <RequestsScreen apiURL={API_URL} token={token} /> : <KycScreen status={kyc ?? user.kycStatus} onChanged={setKyc} />}
+      {tab === 'requests' ? (
+        <RequestsScreen apiURL={API_URL} token={token} onActive={goRide} />
+      ) : tab === 'ride' && rideId ? (
+        <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />
+      ) : tab === 'wallet' ? (
+        <WalletScreen />
+      ) : (
+        <KycScreen status={kyc ?? user.kycStatus} onChanged={setKyc} />
+      )}
       <View style={styles.tabs}>
         <Text onPress={() => setTab('requests')} style={tab === 'requests' ? styles.tabOn : styles.tab}>
           Requests
+        </Text>
+        <Text onPress={() => setTab('ride')} style={tab === 'ride' ? styles.tabOn : styles.tab}>
+          Ride
+        </Text>
+        <Text onPress={() => setTab('wallet')} style={tab === 'wallet' ? styles.tabOn : styles.tab}>
+          Wallet
         </Text>
         <Text onPress={() => setTab('kyc')} style={tab === 'kyc' ? styles.tabOn : styles.tab}>
           KYC
