@@ -20,6 +20,11 @@ declare module 'react-native-maps' {
     { coordinate: { latitude: number; longitude: number }; title?: string } & Record<string, unknown>
   > {}
 }
+declare module 'expo-secure-store' {
+  export function getItemAsync(key: string): Promise<string | null>;
+  export function setItemAsync(key: string, value: string): Promise<void>;
+  export function deleteItemAsync(key: string): Promise<void>;
+}
 declare module 'expo-location' {
   export function requestForegroundPermissionsAsync(): Promise<{ status: string }>;
   export function getCurrentPositionAsync(): Promise<{ coords: { latitude: number; longitude: number } }>;

@@ -1,0 +1,63 @@
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { User } from '../../../../packages/types/src';
+import { initApi, login as apiLogin, logout as apiLogout, me, register as apiRegister, setAccessToken } from '../../../../packages/api/src/index';
+import { loadSession, saveSession, clearSession } from '../storage/sessionStore';
+
+interface Session {
+  user: User | null;
+  ready: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const Ctx = createContext<Session | null>(null);
+
+export function SessionProvider({ baseURL, children }: { baseURL: string; children: ReactNode }): React.JSX.Element {
+  const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    initApi(baseURL);
+    (async () => {
+      const saved = await loadSession();
+      if (saved) {
+        setAccessToken(saved.accessToken);
+        try {
+          const { user: u } = await me();
+          setUser(u);
+        } catch {
+          await clearSession();
+          setAccessToken(null);
+        }
+      }
+      setReady(true);
+    })();
+  }, [baseURL]);
+
+  const login = async (email: string, password: string): Promise<void> => {
+    const r = await apiLogin({ email, password });
+    setUser(r.user);
+    await saveSession({ accessToken: r.accessToken, refreshToken: r.refreshToken });
+  };
+
+  const register = async (name: string, email: string, password: string): Promise<void> => {
+    const r = await apiRegister({ name, email, password, role: 'CUSTOMER' });
+    setUser(r.user);
+    await saveSession({ accessToken: r.accessToken, refreshToken: r.refreshToken });
+  };
+
+  const logout = async (): Promise<void> => {
+    apiLogout();
+    setUser(null);
+    await clearSession();
+  };
+
+  return <Ctx.Provider value={{ user, ready, login, register, logout }}>{children}</Ctx.Provider>;
+}
+
+export function useSession(): Session {
+  const s = useContext(Ctx);
+  if (!s) throw new Error('useSession_outside_provider');
+  return s;
+}
