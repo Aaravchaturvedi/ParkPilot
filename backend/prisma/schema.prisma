@@ -1,4 +1,5 @@
-// Day 2: Users + Auth. Day 3 adds Vehicles, ParkingSpaces, Bookings + relations.
+// Day 3: domain models. Money stored in paise (Int) to avoid float errors.
+// Geo is lat/lng Floats for MVP; PostGIS migration is post-MVP (Phase A).
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl"]
@@ -22,6 +23,31 @@ enum KycStatus {
   REJECTED
 }
 
+enum VehicleCategory {
+  HATCHBACK
+  SEDAN
+  SUV
+}
+
+enum BookingType {
+  DRIVER
+  PARKING
+}
+
+enum BookingStatus {
+  REQUESTED
+  ACCEPTED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id           String    @id @default(cuid())
   name         String
@@ -33,7 +59,80 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  // Day 3 relations: vehicles, bookingsAsCustomer, bookingsAsPartner, parkingSpaces.
+  vehicles            Vehicle[]
+  parkingSpaces       ParkingSpace[]
+  bookingsAsCustomer  Booking[]      @relation("CustomerBookings")
+  bookingsAsPartner   Booking[]      @relation("PartnerBookings")
 
   @@map("users")
+}
+
+model Vehicle {
+  id          String          @id @default(cuid())
+  ownerId     String
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  plateNumber String          @unique
+  make        String?
+  model       String?
+  category    VehicleCategory @default(HATCHBACK)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  bookings Booking[]
+
+  @@index([ownerId])
+  @@map("vehicles")
+}
+
+model ParkingSpace {
+  id                String   @id @default(cuid())
+  ownerId           String
+  owner             User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title             String
+  address           String
+  lat               Float
+  lng               Float
+  pricePerHourPaise Int
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([ownerId])
+  @@index([isActive])
+  @@map("parking_spaces")
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  type              BookingType
+  status            BookingStatus @default(REQUESTED)
+  customerId        String
+  customer          User          @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  partnerId         String?
+  partner           User?         @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
+  vehicleId         String?
+  vehicle           Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  spaceId           String?
+  space             ParkingSpace? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  pickupLat         Float?
+  pickupLng         Float?
+  dropLat           Float?
+  dropLng           Float?
+  distanceKm        Float?
+  // Fare math: amount = platformFee + partnerPayout, always (see services/pricing.js).
+  amountPaise       Int
+  commissionBps     Int           @default(2000) // 2000bps = 20% platform take
+  platformFeePaise  Int
+  partnerPayoutPaise Int
+  paymentStatus     PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([partnerId])
+  @@map("bookings")
 }
