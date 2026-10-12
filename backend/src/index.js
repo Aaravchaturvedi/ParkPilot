@@ -18,10 +18,12 @@ const authRoutes = require('./routes/auth');
 const bookingRoutes = require('./routes/bookings');
 const pricingRoutes = require('./routes/pricing');
 const walletRoutes = require('./routes/wallet');
+const spacesRoutes = require('./routes/spaces');
 app.use('/auth', authRoutes);
 app.use('/bookings', bookingRoutes);
 app.use('/pricing', pricingRoutes);
 app.use('/wallet', walletRoutes);
+app.use('/spaces', spacesRoutes);
 
 // Day 1 health checks. DB/Redis checks added Day 4+.
 app.get('/health', (_req, res) => {

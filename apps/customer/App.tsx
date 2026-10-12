@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SessionProvider, useSession } from './src/store/session';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
+import { MapScreen } from './src/screens/MapScreen';
 
 // Edit for your environment. LAN IP on a physical phone (Day 20),
 // e.g. http://192.168.1.5:4000. Android emulator: http://10.0.2.2:4000.
@@ -27,12 +28,12 @@ function Shell(): React.JSX.Element {
       <RegisterScreen onSwitch={() => setMode('login')} />
     );
   }
-  // Day 11+ replaces this with the map/booking navigator.
+  // Day 11: map home. Day 12 adds the booking flow on marker tap.
   return (
-    <View style={styles.center}>
-      <Text style={styles.title}>Hi, {user.name}</Text>
+    <View style={styles.mapRoot}>
+      <MapScreen onBookParking={() => undefined} />
       <Text onPress={logout} style={styles.link}>
-        Sign out
+        Sign out ({user.name})
       </Text>
       <StatusBar />
     </View>
@@ -49,6 +50,7 @@ export default function App(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  mapRoot: { flex: 1 },
   title: { fontSize: 22, fontWeight: '700' },
-  link: { color: '#2563eb' },
+  link: { color: '#2563eb', textAlign: 'center', padding: 12 },
 });

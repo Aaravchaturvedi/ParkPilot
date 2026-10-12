@@ -4,3 +4,4 @@ export { io, type Socket } from 'socket.io-client';
 export * from './client';
 export * from './auth';
 export * from './bookings';
+export * from './spaces';
