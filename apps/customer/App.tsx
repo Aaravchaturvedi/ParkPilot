@@ -5,14 +5,19 @@ import { SessionProvider, useSession } from './src/store/session';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { MapScreen } from './src/screens/MapScreen';
+import { BookRideScreen } from './src/screens/BookRideScreen';
+import { ParkingScreen } from './src/screens/ParkingScreen';
+import type { ParkingSpace } from '../../packages/types/src';
 
 // Edit for your environment. LAN IP on a physical phone (Day 20),
 // e.g. http://192.168.1.5:4000. Android emulator: http://10.0.2.2:4000.
 const API_URL = 'http://localhost:4000';
 
 function Shell(): React.JSX.Element {
-  const { user, ready, logout } = useSession();
+  const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'map' | 'ride'>('map');
+  const [space, setSpace] = useState<ParkingSpace | null>(null);
 
   if (!ready) {
     return (
@@ -28,13 +33,34 @@ function Shell(): React.JSX.Element {
       <RegisterScreen onSwitch={() => setMode('login')} />
     );
   }
-  // Day 11: map home. Day 12 adds the booking flow on marker tap.
+  // Day 12: map + ride tabs, marker tap opens parking booking.
+  if (!token) {
+    return (
+      <View style={styles.center}>
+        <Text>Restoring session…</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.mapRoot}>
-      <MapScreen onBookParking={() => undefined} />
-      <Text onPress={logout} style={styles.link}>
-        Sign out ({user.name})
-      </Text>
+      {space ? (
+        <ParkingScreen space={space} onDone={() => setSpace(null)} />
+      ) : tab === 'map' ? (
+        <MapScreen onBookParking={(s) => setSpace(s)} />
+      ) : (
+        <BookRideScreen apiURL={API_URL} token={token} />
+      )}
+      <View style={styles.tabs}>
+        <Text onPress={() => { setTab('map'); setSpace(null); }} style={tab === 'map' ? styles.tabOn : styles.tab}>
+          Park
+        </Text>
+        <Text onPress={() => { setTab('ride'); setSpace(null); }} style={tab === 'ride' ? styles.tabOn : styles.tab}>
+          Ride
+        </Text>
+        <Text onPress={logout} style={styles.tab}>
+          Out
+        </Text>
+      </View>
       <StatusBar />
     </View>
   );
@@ -51,6 +77,9 @@ export default function App(): React.JSX.Element {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   mapRoot: { flex: 1 },
+  tabs: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderTopWidth: 1, borderColor: '#e5e7eb' },
+  tab: { color: '#6b7280', fontWeight: '600' },
+  tabOn: { color: '#111827', fontWeight: '700' },
   title: { fontSize: 22, fontWeight: '700' },
   link: { color: '#2563eb', textAlign: 'center', padding: 12 },
 });

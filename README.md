@@ -87,7 +87,7 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 - **Day 9 — Monorepo Init ✅ DONE:** Yarn Workspaces `apps/customer`, `packages/ui,api,types,config` + ESLint/Prettier/tsconfig. Done when `yarn customer start` runs.
 - **Day 10 — Auth UI ✅ DONE:** Navigation + auth screens + `packages/api` Axios integration. Done when login persists session.
 - **Day 11 — Maps ✅ DONE:** `react-native-maps` + permissions + parking/driver list UI. Done when maps render.
-- **Day 12 — Booking Flow:** Request driver UI + pricing display + socket subscribe. Done when customer can request a driver.
+- **Day 12 — Booking Flow ✅ DONE:** Request driver UI + pricing display + socket subscribe. Done when customer can request a driver.
 - **Day 13 — Tracking & Pay:** Live tracking screen + mock payment. Done when customer loop is closable.
 - **Day 14 — SharedPolish:** Harden `packages/ui` + `types/BookingStatus`. Done when no duplicated components.
 
