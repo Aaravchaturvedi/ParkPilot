@@ -74,7 +74,7 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 - **Day 5 — Sockets Setup ✅ DONE:** Socket.io server + auth middleware + rooms (`driver:{id}`, `booking:{id}`). Done when client connects.
 - **Day 6 — Location Stream ✅ DONE:** `DRIVER_LOCATION_UPDATE` -> Redis + `CUSTOMER_LOCATION_SUBSCRIBE` broadcast. Done when location flows end-to-end.
 - **Day 7 — Dispatch ✅ DONE:** Nearby driver query + `BOOKING_REQUEST`, `BOOKING_ACCEPT/REJECT`. Done when request reaches driver.
-- **Day 8 — Simulator:** Mock driver script sending lat/lng. Done when map shows moving point with <1s latency.
+- **Day 8 — Simulator ✅ DONE:** Mock driver script sending lat/lng. Done when map shows moving point with <1s latency.
 
 ### Days 9-14: Monorepo Setup & Customer App
 
