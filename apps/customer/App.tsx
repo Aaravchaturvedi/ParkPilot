@@ -7,6 +7,7 @@ import { RegisterScreen } from './src/screens/RegisterScreen';
 import { MapScreen } from './src/screens/MapScreen';
 import { BookRideScreen } from './src/screens/BookRideScreen';
 import { ParkingScreen } from './src/screens/ParkingScreen';
+import { TrackingScreen } from './src/screens/TrackingScreen';
 import type { ParkingSpace } from '../../packages/types/src';
 
 // Edit for your environment. LAN IP on a physical phone (Day 20),
@@ -18,6 +19,7 @@ function Shell(): React.JSX.Element {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [tab, setTab] = useState<'map' | 'ride'>('map');
   const [space, setSpace] = useState<ParkingSpace | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
 
   if (!ready) {
     return (
@@ -34,6 +36,7 @@ function Shell(): React.JSX.Element {
     );
   }
   // Day 12: map + ride tabs, marker tap opens parking booking.
+  // Day 13: tracking screen closes the loop.
   if (!token) {
     return (
       <View style={styles.center}>
@@ -41,20 +44,26 @@ function Shell(): React.JSX.Element {
       </View>
     );
   }
+  const reset = (): void => {
+    setSpace(null);
+    setTrackingId(null);
+  };
   return (
     <View style={styles.mapRoot}>
-      {space ? (
+      {trackingId ? (
+        <TrackingScreen apiURL={API_URL} token={token} bookingId={trackingId} onDone={() => setTrackingId(null)} />
+      ) : space ? (
         <ParkingScreen space={space} onDone={() => setSpace(null)} />
       ) : tab === 'map' ? (
         <MapScreen onBookParking={(s) => setSpace(s)} />
       ) : (
-        <BookRideScreen apiURL={API_URL} token={token} />
+        <BookRideScreen apiURL={API_URL} token={token} onTracking={(id) => setTrackingId(id)} />
       )}
       <View style={styles.tabs}>
-        <Text onPress={() => { setTab('map'); setSpace(null); }} style={tab === 'map' ? styles.tabOn : styles.tab}>
+        <Text onPress={() => { setTab('map'); reset(); }} style={tab === 'map' ? styles.tabOn : styles.tab}>
           Park
         </Text>
-        <Text onPress={() => { setTab('ride'); setSpace(null); }} style={tab === 'ride' ? styles.tabOn : styles.tab}>
+        <Text onPress={() => { setTab('ride'); reset(); }} style={tab === 'ride' ? styles.tabOn : styles.tab}>
           Ride
         </Text>
         <Text onPress={logout} style={styles.tab}>

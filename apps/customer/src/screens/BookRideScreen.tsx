@@ -6,7 +6,7 @@ import { Button, PriceTag } from '../../../../packages/ui/src';
 import { connectSocket } from '../socket';
 
 // MVP: customer enters trip km (device GPS routing is post-MVP).
-export function BookRideScreen({ apiURL, token }: { apiURL: string; token: string }): React.JSX.Element {
+export function BookRideScreen({ apiURL, token, onTracking }: { apiURL: string; token: string; onTracking: (bookingId: string) => void }): React.JSX.Element {
   const [km, setKm] = useState('10');
   const [quote, setQuote] = useState<DriverQuote | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -65,9 +65,12 @@ export function BookRideScreen({ apiURL, token }: { apiURL: string; token: strin
         </View>
       ) : null}
       {booking ? (
-        <Text style={styles.status}>
-          {booking.id.slice(0, 8)} · {liveStatus ?? booking.status} · {notified} driver(s) notified
-        </Text>
+        <View style={styles.card}>
+          <Text style={styles.status}>
+            {booking.id.slice(0, 8)} · {liveStatus ?? booking.status} · {notified} driver(s) notified
+          </Text>
+          <Button title="Track & pay" onPress={() => onTracking(booking.id)} />
+        </View>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>

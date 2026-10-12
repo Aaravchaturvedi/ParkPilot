@@ -42,4 +42,10 @@ async function complete(req, res) {
   return res.json({ booking });
 }
 
-module.exports = { create, list, get, accept, cancel, complete };
+async function pay(req, res) {
+  const booking = await svc.payBooking(req.params.id, req.user.id);
+  emitBooking(req.app.get('io'), booking);
+  return res.json({ booking });
+}
+
+module.exports = { create, list, get, accept, cancel, complete, pay };

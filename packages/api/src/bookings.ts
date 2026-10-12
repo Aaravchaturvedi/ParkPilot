@@ -36,6 +36,11 @@ export async function completeBooking(id: string): Promise<{ booking: Booking }>
   return data;
 }
 
+export async function payBooking(id: string): Promise<{ booking: Booking }> {
+  const { data } = await api().patch(`/bookings/${id}/pay`);
+  return data;
+}
+
 export async function wallet(): Promise<{ wallet: Wallet }> {
   const { data } = await api().get('/wallet');
   return data;

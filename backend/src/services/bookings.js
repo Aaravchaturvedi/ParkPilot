@@ -2,7 +2,8 @@ const prisma = require('../lib/prisma');
 const { coded } = require('../middleware/async');
 const { quoteDriverFare, quoteParkingFare, DEFAULT_COMMISSION_BPS } = require('./pricing');
 
-const BOOKING_FULL = { customer: true, partner: true, vehicle: true, space: true };
+const PUBLIC_USER_SELECT = { id: true, name: true, email: true, phone: true, role: true, kycStatus: true, createdAt: true };
+const BOOKING_FULL = { customer: { select: PUBLIC_USER_SELECT }, partner: { select: PUBLIC_USER_SELECT }, vehicle: true, space: true };
 const MIN_BPS = 2000; // 20%
 const MAX_BPS = 2500; // 25%
 
@@ -94,6 +95,19 @@ async function completeBooking(bookingId, partnerId) {
   });
 }
 
+// Mock customer payment (Stripe/Razorpay integration is post-MVP).
+async function payBooking(bookingId, userId) {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  if (!b) throw coded(404, 'booking_not_found');
+  if (b.customerId !== userId) throw coded(403, 'only_customer_pays');
+  if (b.paymentStatus === 'COMPLETED') throw coded(409, 'already_paid');
+  return prisma.booking.update({
+    where: { id: bookingId },
+    data: { paymentStatus: 'COMPLETED' },
+    include: BOOKING_FULL,
+  });
+}
+
 async function walletSummary(userId) {
   const [earned, pending, spent] = await Promise.all([
     prisma.booking.aggregate({ where: { partnerId: userId, status: 'COMPLETED' }, _sum: { partnerPayoutPaise: true } }),
@@ -108,4 +122,4 @@ async function walletSummary(userId) {
   };
 }
 
-module.exports = { createDriverBooking, createParkingBooking, getOwnBookings, getBookingForParty, acceptBooking, cancelBooking, completeBooking, walletSummary };
+module.exports = { createDriverBooking, createParkingBooking, getOwnBookings, getBookingForParty, acceptBooking, cancelBooking, completeBooking, payBooking, walletSummary };
