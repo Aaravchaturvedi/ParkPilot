@@ -1,6 +1,7 @@
-// Day 1: minimal Prisma setup. Expanded on Day 2 (Users+Auth) and Day 3 (Vehicles, Spaces, Bookings).
+// Day 2: Users + Auth. Day 3 adds Vehicles, ParkingSpaces, Bookings + relations.
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl"]
 }
 
 datasource db {
@@ -8,12 +9,31 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum Role {
+  CUSTOMER
+  PARTNER
+  ADMIN
+}
 
-  // Day 2 will add: phone/email, passwordHash, role (CUSTOMER/PARTNER/ADMIN),
-  // kycStatus, and relations to Vehicles / Bookings.
+enum KycStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  phone        String?   @unique
+  passwordHash String
+  role         Role      @default(CUSTOMER)
+  kycStatus    KycStatus @default(PENDING)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Day 3 relations: vehicles, bookingsAsCustomer, bookingsAsPartner, parkingSpaces.
+
   @@map("users")
 }

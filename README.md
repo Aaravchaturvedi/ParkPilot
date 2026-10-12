@@ -59,7 +59,7 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 **Day-by-day:**
 
 - **Day 1 — Repo & Infra ✅ DONE:** Init `backend/`, `docker-compose.yml` (Node, PostgreSQL, Redis), Prisma setup. Done when `docker compose up` runs clean.
-- **Day 2 — Auth:** `Users` schema + JWT register/login/refresh + bcrypt. Done when tested via Postman.
+- **Day 2 — Auth ✅ DONE:** `Users` schema + JWT register/login/refresh + bcrypt. Done when tested via Postman.
 - **Day 3 — Domain Schemas:** `Vehicles`, `ParkingSpaces`, `Bookings` + commission split (20-25% / 75-80%). Done when migrations pass.
 - **Day 4 — REST Core:** `POST /bookings`, `GET /pricing`, `GET /wallet` (mock). Done when full booking CRUD works without realtime.
 
