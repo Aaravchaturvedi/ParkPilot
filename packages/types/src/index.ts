@@ -97,3 +97,6 @@ export interface LatLng {
 }
 
 export const paiseToRupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
+
+export const TERMINAL_STATUSES: BookingStatus[] = ['COMPLETED', 'CANCELLED'];
+export const isTerminalStatus = (s: BookingStatus): boolean => TERMINAL_STATUSES.includes(s);

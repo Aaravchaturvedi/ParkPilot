@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import type { Booking, BookingStatus, DriverQuote } from '../../../../packages/types/src';
 import { createBooking, quoteDriver } from '../../../../packages/api/src/index';
-import { Button, PriceTag } from '../../../../packages/ui/src';
+import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
 import { connectSocket } from '../socket';
 
 // MVP: customer enters trip km (device GPS routing is post-MVP).
@@ -56,21 +56,22 @@ export function BookRideScreen({ apiURL, token, onTracking }: { apiURL: string; 
       <TextInput style={styles.input} placeholder="Distance (km)" keyboardType="numeric" value={km} onChangeText={setKm} />
       <Button title="Get price" onPress={fetchQuote} />
       {quote ? (
-        <View style={styles.card}>
+        <Card>
           <PriceTag paise={quote.amountPaise} label="Trip" />
           <Text style={styles.dim}>
             Platform fee {quote.commissionBps / 100}% · driver gets {(quote.partnerPayoutPaise / 100).toFixed(2)}
           </Text>
           <Button title={busy ? 'Booking…' : 'Confirm booking'} onPress={book} disabled={busy} />
-        </View>
+        </Card>
       ) : null}
       {booking ? (
-        <View style={styles.card}>
-          <Text style={styles.status}>
-            {booking.id.slice(0, 8)} · {liveStatus ?? booking.status} · {notified} driver(s) notified
+        <Card>
+          <StatusPill status={liveStatus ?? booking.status} />
+          <Text style={styles.dim}>
+            {booking.id.slice(0, 8)} · {notified} driver(s) notified
           </Text>
           <Button title="Track & pay" onPress={() => onTracking(booking.id)} />
-        </View>
+        </Card>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>

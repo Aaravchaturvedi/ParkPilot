@@ -89,7 +89,7 @@ This highly condensed schedule focuses strictly on proving the core loop: A cust
 - **Day 11 — Maps ✅ DONE:** `react-native-maps` + permissions + parking/driver list UI. Done when maps render.
 - **Day 12 — Booking Flow ✅ DONE:** Request driver UI + pricing display + socket subscribe. Done when customer can request a driver.
 - **Day 13 — Tracking & Pay ✅ DONE:** Live tracking screen + mock payment. Done when customer loop is closable.
-- **Day 14 — SharedPolish:** Harden `packages/ui` + `types/BookingStatus`. Done when no duplicated components.
+- **Day 14 — SharedPolish ✅ DONE:** Harden `packages/ui` + `types/BookingStatus`. Done when no duplicated components.
 
 ### Days 15-20: Partner App & End-to-End Testing
 

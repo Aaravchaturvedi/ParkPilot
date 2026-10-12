@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
 import { listBookings, payBooking } from '../../../../packages/api/src/index';
-import { Button, PriceTag } from '../../../../packages/ui/src';
+import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
 import { connectSocket } from '../socket';
 
 interface DriverPing {
@@ -69,7 +69,7 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Trip {bookingId.slice(0, 8)}</Text>
-      <Text style={styles.status}>Status: {status ?? '…'}</Text>
+      {status ? <StatusPill status={status} /> : null}
       <Text>Driver position: {pos ? `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)} (${pings} updates)` : 'waiting for driver…'}</Text>
       {booking ? <PriceTag paise={booking.amountPaise} label="Fare" /> : null}
       <Text>Payment: {booking?.paymentStatus ?? '…'}</Text>
