@@ -1,4 +1,4 @@
-# SmartDrive & Park Network - Architecture & Roadmap
+# ParkPilot - Architecture & Roadmap
 
 This document outlines the technical architecture, monorepo file structure, and strategic development roadmap for **SmartDrive & Park Network**, a dual-sided urban mobility platform engineered to solve professional driver shortages and peer-to-peer (P2P) parking deficits.
 
