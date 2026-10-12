@@ -1,0 +1,19 @@
+// Day 1: minimal Prisma setup. Expanded on Day 2 (Users+Auth) and Day 3 (Vehicles, Spaces, Bookings).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Day 2 will add: phone/email, passwordHash, role (CUSTOMER/PARTNER/ADMIN),
+  // kycStatus, and relations to Vehicles / Bookings.
+  @@map("users")
+}

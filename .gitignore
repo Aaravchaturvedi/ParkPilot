@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# env
+.env
+.env.local
+*.pem
+
+# prisma
+backend/prisma/migrations/migration_lock.toml
+!backend/prisma/migrations/**/migration.sql
+
+# expo / mobile (Day 9+)
+apps/*/node_modules
+apps/*/.expo
+.expo/
+
+# OS / editor
+.DS_Store
+*.log

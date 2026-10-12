@@ -1,0 +1,22 @@
+{
+  "name": "smartdrive-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SmartDrive & Park Network - dual-sided urban mobility platform (P2P parking + professional drivers)",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "backend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev -w backend",
+    "start:backend": "npm run start -w backend",
+    "prisma:generate": "npm run prisma:generate -w backend",
+    "prisma:migrate": "npm run prisma:migrate -w backend",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down -v"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
