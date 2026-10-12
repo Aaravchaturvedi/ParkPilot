@@ -7,13 +7,14 @@ import { KycScreen } from './src/screens/KycScreen';
 import { RequestsScreen } from './src/screens/RequestsScreen';
 import { RideScreen } from './src/screens/RideScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
+import { HostScreen } from './src/screens/HostScreen';
 
 const API_URL = 'http://localhost:4000';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [tab, setTab] = useState<'requests' | 'ride' | 'wallet' | 'kyc'>('requests');
+  const [tab, setTab] = useState<'requests' | 'ride' | 'wallet' | 'host' | 'kyc'>('requests');
   const [rideId, setRideId] = useState<string | null>(null);
   const [kyc, setKyc] = useState<KycStatus | null>(null);
 
@@ -63,6 +64,8 @@ function Shell(): React.JSX.Element {
         <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />
       ) : tab === 'wallet' ? (
         <WalletScreen />
+      ) : tab === 'host' ? (
+        <HostScreen />
       ) : (
         <KycScreen status={kyc ?? user.kycStatus} onChanged={setKyc} />
       )}
@@ -72,6 +75,9 @@ function Shell(): React.JSX.Element {
         </Text>
         <Text onPress={() => setTab('ride')} style={tab === 'ride' ? styles.tabOn : styles.tab}>
           Ride
+        </Text>
+        <Text onPress={() => setTab('host')} style={tab === 'host' ? styles.tabOn : styles.tab}>
+          Spaces
         </Text>
         <Text onPress={() => setTab('wallet')} style={tab === 'wallet' ? styles.tabOn : styles.tab}>
           Wallet

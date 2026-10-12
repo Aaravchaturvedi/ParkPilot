@@ -1,4 +1,5 @@
 const prisma = require('../lib/prisma');
+const { coded } = require('../middleware/async');
 
 // Haversine km. MVP filter (PostGIS is Phase A).
 function distKm(aLat, aLng, bLat, bLng) {
@@ -11,12 +12,14 @@ function distKm(aLat, aLng, bLat, bLng) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-async function nearbySpaces(lat, lng, radiusKm = 5) {
+function assertCoords(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    const e = new Error('invalid_coords');
-    e.status = 400;
-    throw e;
+    throw coded(400, 'invalid_coords');
   }
+}
+
+async function nearbySpaces(lat, lng, radiusKm = 5) {
+  assertCoords(lat, lng);
   const spaces = await prisma.parkingSpace.findMany({ where: { isActive: true }, take: 200 });
   return spaces
     .map((s) => ({ ...s, distanceKm: Math.round(distKm(lat, lng, s.lat, s.lng) * 100) / 100 }))
@@ -25,4 +28,30 @@ async function nearbySpaces(lat, lng, radiusKm = 5) {
     .slice(0, 20);
 }
 
-module.exports = { nearbySpaces };
+async function createSpace(ownerId, { title, address, lat, lng, pricePerHourPaise }) {
+  if (!title || !address) throw coded(400, 'title_address_required');
+  assertCoords(lat, lng);
+  if (!Number.isInteger(pricePerHourPaise) || pricePerHourPaise <= 0) throw coded(400, 'pricePerHourPaise_must_be_positive_int');
+  return prisma.parkingSpace.create({ data: { ownerId, title, address, lat, lng, pricePerHourPaise } });
+}
+
+async function mySpaces(ownerId) {
+  return prisma.parkingSpace.findMany({ where: { ownerId }, orderBy: { createdAt: 'desc' } });
+}
+
+async function updateSpace(ownerId, id, patch) {
+  const s = await prisma.parkingSpace.findUnique({ where: { id } });
+  if (!s) throw coded(404, 'space_not_found');
+  if (s.ownerId !== ownerId) throw coded(403, 'not_your_space');
+  const data = {};
+  if (patch.title !== undefined) data.title = patch.title;
+  if (patch.address !== undefined) data.address = patch.address;
+  if (patch.pricePerHourPaise !== undefined) {
+    if (!Number.isInteger(patch.pricePerHourPaise) || patch.pricePerHourPaise <= 0) throw coded(400, 'pricePerHourPaise_must_be_positive_int');
+    data.pricePerHourPaise = patch.pricePerHourPaise;
+  }
+  if (patch.isActive !== undefined) data.isActive = Boolean(patch.isActive);
+  return prisma.parkingSpace.update({ where: { id }, data });
+}
+
+module.exports = { nearbySpaces, createSpace, mySpaces, updateSpace };

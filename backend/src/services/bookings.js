@@ -52,7 +52,9 @@ async function createParkingBooking({ customerId, spaceId, hours, commissionBps 
 
 async function getOwnBookings(userId) {
   return prisma.booking.findMany({
-    where: { OR: [{ customerId: userId }, { partnerId: userId }] },
+    where: {
+      OR: [{ customerId: userId }, { partnerId: userId }, { space: { ownerId: userId } }],
+    },
     orderBy: { createdAt: 'desc' },
     include: BOOKING_FULL,
   });
