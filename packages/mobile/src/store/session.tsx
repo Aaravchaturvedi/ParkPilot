@@ -8,7 +8,7 @@ interface Session {
   token: string | null;
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -49,8 +49,8 @@ export function SessionProvider({ baseURL, children }: { baseURL: string; childr
     await saveSession({ accessToken: r.accessToken, refreshToken: r.refreshToken });
   };
 
-  const register = async (name: string, email: string, password: string): Promise<void> => {
-    const r = await apiRegister({ name, email, password, role: 'CUSTOMER' });
+  const register = async (name: string, email: string, password: string, role?: string): Promise<void> => {
+    const r = await apiRegister({ name, email, password, role: role || 'CUSTOMER' });
     setUser(r.user);
     setToken(r.accessToken);
     await saveSession({ accessToken: r.accessToken, refreshToken: r.refreshToken });

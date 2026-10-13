@@ -36,7 +36,7 @@ function Shell(): React.JSX.Element {
     return mode === 'login' ? (
       <LoginScreen onSwitch={() => setMode('register')} />
     ) : (
-      <RegisterScreen onSwitch={() => setMode('login')} />
+      <RegisterScreen onSwitch={() => setMode('login')} role="PARTNER" />
     );
   }
   if (user.role !== 'PARTNER' && user.role !== 'ADMIN') {

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Button, Field } from '../../../ui/src';
 import { useSession } from '../store/session';
 
-export function RegisterScreen({ onSwitch }: { onSwitch: () => void }): React.JSX.Element {
+export function RegisterScreen({ onSwitch, role }: { onSwitch: () => void; role?: string }): React.JSX.Element {
   const { register } = useSession();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -15,7 +15,7 @@ export function RegisterScreen({ onSwitch }: { onSwitch: () => void }): React.JS
     setBusy(true);
     setError(null);
     try {
-      await register(name.trim(), email.trim(), password);
+      await register(name.trim(), email.trim(), password, role);
     } catch {
       setError('Sign-up failed — email may be taken (min 6-char password).');
     } finally {
