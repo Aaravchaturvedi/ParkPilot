@@ -20,19 +20,16 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@types/react": "~18.3.0",
-    "@types/react-native": "^0.72.8",
+    "@types/react": "~19.2.4",
+    "@types/react-native": "^0.73.0",
     "axios": "^1.20.0",
-    "metro": "0.81.0",
-    "metro-config": "0.81.0",
-    "metro-resolver": "0.81.0",
+    "metro": "^0.84.0",
+    "metro-config": "^0.84.0",
+    "metro-resolver": "^0.84.0",
     "typescript": "^7.0.2"
   },
   "overrides": {
-    "react": "18.3.1",
-    "react-native": "0.76.9",
-    "metro": "0.81.0",
-    "metro-config": "0.81.0",
-    "metro-resolver": "0.81.0"
+    "react": "19.2.3",
+    "react-native": "0.86.3"
   }
 }

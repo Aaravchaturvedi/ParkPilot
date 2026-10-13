@@ -8,7 +8,7 @@ This architecture leverages a modern full-stack web paradigm mapped to mobile en
 
 ### Backend & Infrastructure (The Engine)
 
-- **Runtime & API:** Node.js and Express.js for scalable REST architecture.
+- **Runtime & API:** Node.js and Express.js (TypeScript, strict) for scalable REST architecture.
 - **Real-Time Data:** Socket.io for low-latency live GPS tracking and bidirectional booking events.
 - **Relational Database:** PostgreSQL (managed via Prisma ORM) for highly structured transactional data like user profiles, booking ledgers, and financial records.
 - **In-Memory Store:** Redis for ephemeral state management, rate-limiting, and tracking rapidly shifting geocoordinates of available drivers.

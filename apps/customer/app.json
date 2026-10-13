@@ -7,8 +7,12 @@
     "plugins": [
       [
         "expo-location",
-        { "locationAlwaysAndWhenInUsePermission": "ParkPilot needs your location to find drivers and parking." }
-      ]
+        {
+          "locationAlwaysAndWhenInUsePermission": "ParkPilot needs your location to find drivers and parking."
+        }
+      ],
+      "expo-secure-store",
+      "expo-status-bar"
     ]
   }
 }
