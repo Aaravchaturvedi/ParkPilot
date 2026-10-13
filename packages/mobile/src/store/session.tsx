@@ -22,20 +22,23 @@ export function SessionProvider({ baseURL, children }: { baseURL: string; childr
   useEffect(() => {
     initApi(baseURL);
     (async () => {
-      const saved = await loadSession();
-      if (saved) {
-        setAccessToken(saved.accessToken);
-        setToken(saved.accessToken);
-        try {
-          const { user: u } = await me();
-          setUser(u);
-        } catch {
-          await clearSession();
-          setAccessToken(null);
-          setToken(null);
+      try {
+        const saved = await loadSession();
+        if (saved) {
+          setAccessToken(saved.accessToken);
+          setToken(saved.accessToken);
+          try {
+            const { user: u } = await me();
+            setUser(u);
+          } catch {
+            await clearSession();
+            setAccessToken(null);
+            setToken(null);
+          }
         }
+      } finally {
+        setReady(true);
       }
-      setReady(true);
     })();
   }, [baseURL]);
 

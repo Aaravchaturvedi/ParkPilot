@@ -9,7 +9,9 @@ import { RideScreen } from './src/screens/RideScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
 import { HostScreen } from './src/screens/HostScreen';
 
-const API_URL = 'http://localhost:4000';
+// Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
+// on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
+const API_URL = 'https://miller-permits-dsc-endless.trycloudflare.com';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();

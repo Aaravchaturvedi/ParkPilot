@@ -76,5 +76,12 @@ export function initSockets(httpServer: import('http').Server): Server {
 }
 
 export function emitBooking(io: Server | undefined, booking: FullBooking): void {
-  io?.to(bookingRoom(booking.id)).emit('booking:updated', { booking });
+  if (!io) return;
+  // Booking room (explicit join) AND personal rooms (joined at connect).
+  // Personal fallback covers slow/flaky clients whose join lands after
+  // the status change — the normal case on mobile networks.
+  const payload = { booking };
+  io.to(bookingRoom(booking.id)).emit('booking:updated', payload);
+  io.to(userRoom(booking.customerId)).emit('booking:updated', payload);
+  if (booking.partnerId) io.to(userRoom(booking.partnerId)).emit('booking:updated', payload);
 }

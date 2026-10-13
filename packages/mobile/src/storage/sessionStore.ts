@@ -1,5 +1,6 @@
 // Token persistence. Uses expo-secure-store at runtime; falls back to
-// memory in environments without native modules (e.g. web preview).
+// memory when native/web storage is unavailable or throws (e.g. web stub
+// mismatch) so a storage fault can never wedge the app on Loading.
 import * as SecureStore from 'expo-secure-store';
 
 export interface SavedSession {
@@ -22,15 +23,23 @@ function storeAvailable(): boolean {
 export async function saveSession(s: SavedSession): Promise<void> {
   mem = s;
   if (!storeAvailable()) return;
-  await SecureStore.setItemAsync(A_KEY, s.accessToken);
-  await SecureStore.setItemAsync(R_KEY, s.refreshToken);
+  try {
+    await SecureStore.setItemAsync(A_KEY, s.accessToken);
+    await SecureStore.setItemAsync(R_KEY, s.refreshToken);
+  } catch {
+    // memory copy above keeps the session alive for this launch
+  }
 }
 
 export async function loadSession(): Promise<SavedSession | null> {
   if (storeAvailable()) {
-    const a = await SecureStore.getItemAsync(A_KEY);
-    const r = await SecureStore.getItemAsync(R_KEY);
-    if (a && r) return { accessToken: a, refreshToken: r };
+    try {
+      const a = await SecureStore.getItemAsync(A_KEY);
+      const r = await SecureStore.getItemAsync(R_KEY);
+      if (a && r) return { accessToken: a, refreshToken: r };
+    } catch {
+      // fall through to memory
+    }
   }
   return mem;
 }
@@ -38,6 +47,10 @@ export async function loadSession(): Promise<SavedSession | null> {
 export async function clearSession(): Promise<void> {
   mem = null;
   if (!storeAvailable()) return;
-  await SecureStore.deleteItemAsync(A_KEY);
-  await SecureStore.deleteItemAsync(R_KEY);
+  try {
+    await SecureStore.deleteItemAsync(A_KEY);
+    await SecureStore.deleteItemAsync(R_KEY);
+  } catch {
+    // already cleared in memory
+  }
 }

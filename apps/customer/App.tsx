@@ -8,9 +8,9 @@ import { ParkingScreen } from './src/screens/ParkingScreen';
 import { TrackingScreen } from './src/screens/TrackingScreen';
 import type { ParkingSpace } from '../../packages/types/src';
 
-// Edit for your environment. LAN IP on a physical phone (Day 20),
-// e.g. http://192.168.1.5:4000. Android emulator: http://10.0.2.2:4000.
-const API_URL = 'http://localhost:4000';
+// Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
+// on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
+const API_URL = 'https://miller-permits-dsc-endless.trycloudflare.com';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
