@@ -1,0 +1,102 @@
+import type { Server, Socket } from 'socket.io';
+import { getRedis } from '../lib/redis';
+
+const LIVE_KEY = 'drivers:live'; // GEO: lng, lat, driverId
+const FRESH_MS = 90 * 1000; // positions older than this are stale
+const metaKey = (id: string): string => `driver:meta:${id}`;
+
+function validCoord(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
+export function trackingRoom(driverId: string): string {
+  return `tracking:${driverId}`;
+}
+
+export interface LastKnown {
+  lat: number;
+  lng: number;
+  at: number;
+}
+
+export async function lastKnown(driverId: string): Promise<LastKnown | null> {
+  const meta = (await getRedis().hgetall(metaKey(driverId))) as Record<string, string> | null;
+  if (!meta || meta.lat === undefined) return null;
+  return { lat: Number(meta.lat), lng: Number(meta.lng), at: Number(meta.at) };
+}
+
+export async function isFresh(driverId: string): Promise<boolean> {
+  const last = await lastKnown(driverId);
+  return Boolean(last && Date.now() - last.at < FRESH_MS);
+}
+
+// GEO members don't expire; callers must filter by freshness (see dispatch.ts Day 7).
+export async function nearbyDrivers(lng: number, lat: number, radiusKm = 5, limit = 10): Promise<string[]> {
+  const r = getRedis();
+  const found = (await r.georadius(LIVE_KEY, lng, lat, radiusKm, 'km', 'COUNT', limit, 'ASC')) as string[];
+  const fresh: string[] = [];
+  for (const id of found) {
+    if (await isFresh(id)) fresh.push(id);
+    else await r.zrem(LIVE_KEY, id); // sweep stale member
+  }
+  return fresh;
+}
+
+export async function liveDriverIds(limit = 50): Promise<string[]> {
+  const r = getRedis();
+  const ids = (await r.zrange(LIVE_KEY, 0, limit - 1)) as string[];
+  const fresh: string[] = [];
+  for (const id of ids) {
+    if (await isFresh(id)) fresh.push(id);
+    else await r.zrem(LIVE_KEY, id);
+  }
+  return fresh;
+}
+
+type Ack = (res: { ok: boolean; at?: number; error?: string; room?: string; last?: LastKnown | null }) => void;
+
+export function registerLocationHandlers(io: Server, socket: Socket): void {
+  const { id, role } = socket.data.user as { id: string; role: string };
+
+  socket.on('driver:location', async ({ lat, lng }: { lat?: number; lng?: number } = {}, ack?: Ack) => {
+    try {
+      if (role !== 'PARTNER' && role !== 'ADMIN') {
+        ack?.({ ok: false, error: 'only_partners_broadcast' });
+        return;
+      }
+      if (typeof lat !== 'number' || typeof lng !== 'number' || !validCoord(lat, lng)) {
+        ack?.({ ok: false, error: 'invalid_coords' });
+        return;
+      }
+      const at = Date.now();
+      const r = getRedis();
+      await r.geoadd(LIVE_KEY, lng, lat, id);
+      await r.hset(metaKey(id), { lat, lng, at });
+      await r.expire(metaKey(id), 300);
+      io.to(trackingRoom(id)).emit('driver:moved', { driverId: id, lat, lng, at });
+      ack?.({ ok: true, at });
+    } catch {
+      ack?.({ ok: false, error: 'store_failed' });
+    }
+  });
+
+  socket.on('tracking:subscribe', async ({ driverId }: { driverId?: string } = {}, ack?: Ack) => {
+    try {
+      if (!driverId) {
+        ack?.({ ok: false, error: 'driverId_required' });
+        return;
+      }
+      await socket.join(trackingRoom(driverId));
+      ack?.({ ok: true, room: trackingRoom(driverId), last: await lastKnown(driverId) });
+    } catch {
+      ack?.({ ok: false, error: 'subscribe_failed' });
+    }
+  });
+
+  socket.on('tracking:unsubscribe', ({ driverId }: { driverId?: string } = {}, ack?: Ack) => {
+    void socket.leave(trackingRoom(driverId as string));
+    ack?.({ ok: true });
+  });
+}
+
+export { LIVE_KEY };
