@@ -62,8 +62,15 @@ function Shell(): React.JSX.Element {
       <Text style={styles.title}>Partner · {user.name}</Text>
       {tab === 'requests' ? (
         <RequestsScreen apiURL={API_URL} token={token} onActive={goRide} />
-      ) : tab === 'ride' && rideId ? (
-        <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />
+      ) : tab === 'ride' ? (
+        rideId ? (
+          <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />
+        ) : (
+          <View style={styles.center}>
+            <Text>No active ride.</Text>
+            <Text style={styles.dim}>Accept a request first — it opens here automatically.</Text>
+          </View>
+        )
       ) : tab === 'wallet' ? (
         <WalletScreen />
       ) : tab === 'host' ? (
@@ -108,6 +115,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
   root: { flex: 1, paddingTop: 48 },
   title: { fontSize: 20, fontWeight: '700', paddingHorizontal: 16 },
+  dim: { color: '#6b7280', textAlign: 'center', paddingHorizontal: 24 },
   tabs: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderTopWidth: 1, borderColor: '#e5e7eb' },
   tab: { color: '#6b7280', fontWeight: '600' },
   tabOn: { color: '#111827', fontWeight: '700' },
