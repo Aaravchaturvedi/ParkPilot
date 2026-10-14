@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatKm, haversineKm } from '../../../../packages/types/src';
-import { Button, Card, EmptyState, SegmentedControl, StatusPill } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, EmptyState, FadeIn, Screen, SectionLabel, SegmentedControl, StatusPill } from '../../../../packages/ui/src';
 import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { acceptBooking as restAccept } from '../../../../packages/api/src/index';
@@ -50,15 +50,15 @@ function pickupOf(b: Booking): { lat: number; lng: number } | null {
 }
 
 // Driver inbox, nearest first. Each request exposes the customer's pickup
-// (where they are) and drop (where they want to go); distances are measured
-// from YOUR live GPS via the same haversine math the customer app uses, so
-// both sides agree on "2 km away from you".
+// (where they are); distances are measured from YOUR live GPS via the same
+// haversine math the customer app uses, so both sides agree on "2 km away".
 export function RequestsScreen({ apiURL, token, online, setOnline, incoming, setIncoming, onActive, onDismissed, onSync, active = true }: Props): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [maxKm, setMaxKm] = useState(Infinity);
+  const [toggling, setToggling] = useState(false);
 
   // Whenever the tab becomes visible while online, converge with the ledger
   // (covers pushes missed while the app was backgrounded).
@@ -109,6 +109,41 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
     rows.sort((a, b) => (a.kmAway ?? Infinity) - (b.kmAway ?? Infinity));
     return rows.filter((r) => (r.kmAway ?? Infinity) <= maxKm);
   }, [incoming, me, maxKm]);
+
+  const toggle = (): void => {
+    const s = sock(apiURL, token);
+    if (!s) {
+      setError('No connection — check network, then retry.');
+      return;
+    }
+    if (online) {
+      try {
+        s.emit('partner:offline', {});
+      } catch {
+        // ignore
+      }
+      setOnline(false);
+      return;
+    }
+    // The server only dispatches to registered-online partners: the toggle
+    // MUST confirm registration, never just flip local state.
+    setToggling(true);
+    void (async () => {
+      try {
+        const ack = (await s.emitWithAck('partner:online', {})) as { ok: boolean; error?: string };
+        if (ack.ok) {
+          setOnline(true);
+          setError(null);
+          void locate();
+          void onSync?.();
+        } else setError(ack.error ?? 'Go-online failed — check connection, then retry.');
+      } catch {
+        setError('Go-online failed — check connection, then retry.');
+      } finally {
+        setToggling(false);
+      }
+    })();
+  };
 
   const accept = async (id: string): Promise<void> => {
     setBusyId(id);
@@ -168,71 +203,44 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
   };
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Button
-        title={online ? 'Go offline' : 'Go online'}
-        onPress={() => {
-          const s = sock(apiURL, token);
-          if (!s) {
-            setError('No connection — check network, then retry.');
-            return;
-          }
-          if (online) {
-            try {
-              s.emit('partner:offline', {});
-            } catch {
-              // ignore
-            }
-            setOnline(false);
-            return;
-          }
-          // The server only dispatches to registered-online partners: the
-          // toggle MUST confirm registration, never just flip local state.
-          void (async () => {
-            try {
-              const ack = (await s.emitWithAck('partner:online', {})) as { ok: boolean; error?: string };
-              if (ack.ok) {
-                setOnline(true);
-                setError(null);
-                void locate();
-                void onSync?.();
-              } else setError(ack.error ?? 'Go-online failed — check connection, then retry.');
-            } catch {
-              setError('Go-online failed — check connection, then retry.');
-            }
-          })();
-        }}
+    <Screen>
+      <AppHeader
+        title="Requests"
+        subtitle={online ? (me ? 'Online · nearest first' : 'Online · locating you…') : 'You’re offline'}
+        right={<View style={[styles.dot, online ? styles.dotOn : styles.dotOff]} />}
       />
-      {!online ? <Text style={styles.dim}>You are offline — go online to receive ride requests.</Text> : null}
+      <Card style={[styles.presence, online ? styles.presenceOn : styles.presenceOff]}>
+        <View style={styles.presenceCol}>
+          <Text style={styles.presenceTitle}>{online ? 'Accepting rides' : 'Not receiving rides'}</Text>
+          <Text style={styles.dim}>{online ? (me ? `GPS ${me.lat.toFixed(3)}, ${me.lng.toFixed(3)}` : (locNote ?? 'Reading GPS…')) : 'Go online — requests land here automatically.'}</Text>
+        </View>
+        <Button title={toggling ? '…' : online ? 'Go offline' : 'Go online'} small variant={online ? 'secondary' : 'primary'} onPress={toggle} disabled={toggling} />
+      </Card>
       <View style={styles.headRow}>
-        <Text style={styles.title}>Requests ({online ? 'online' : 'offline'})</Text>
-        {online ? <Button title="Refresh" onPress={() => { void locate(); onSync?.(); }} /> : null}
+        <Text style={styles.count}>{online ? `${visible.length} request${visible.length === 1 ? '' : 's'}` : 'Inbox'}</Text>
+        {online ? <Button title="Refresh" small variant="secondary" onPress={() => { void locate(); onSync?.(); }} /> : null}
       </View>
-      {me ? (
-        <Text style={styles.dim}>Your GPS {me.lat.toFixed(3)}, {me.lng.toFixed(3)} · sorted nearest first</Text>
-      ) : (
-        <Text style={styles.dim}>{locNote ?? 'Reading your GPS for distances…'}</Text>
-      )}
       <SegmentedControl options={FILTERS.map((f) => ({ value: f.label, label: f.label }))} value={FILTERS.find((f) => f.km === maxKm)?.label ?? 'All'} onChange={(label) => setMaxKm(FILTERS.find((f) => f.label === label)?.km ?? Infinity)} />
       {online && visible.length === 0 && incoming.length > 0 ? <Text style={styles.dim}>All {incoming.length} request(s) are outside this distance filter — widen it.</Text> : null}
       {online && incoming.length === 0 ? (
         <EmptyState title="No requests yet" hint="Stay online — new bookings pop up here automatically, nearest first." />
       ) : null}
       {!online && incoming.length === 0 ? <EmptyState title="You're offline" hint="Go online to receive ride requests." /> : null}
-      {visible.map(({ booking, at, kmAway }) => (
-        <RequestCard
-          key={booking.id}
-          booking={booking}
-          at={at}
-          kmAway={kmAway}
-          me={me}
-          busy={busyId === booking.id}
-          onAccept={() => accept(booking.id)}
-          onReject={() => reject(booking.id)}
-        />
+      {visible.map(({ booking, at, kmAway }, i) => (
+        <FadeIn key={booking.id} delay={Math.min(i, 5) * 60}>
+          <RequestCard
+            booking={booking}
+            at={at}
+            kmAway={kmAway}
+            me={me}
+            busy={busyId === booking.id}
+            onAccept={() => accept(booking.id)}
+            onReject={() => reject(booking.id)}
+          />
+        </FadeIn>
       ))}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -261,11 +269,14 @@ function RequestCard({
   const pickup = pickupOf(booking);
   const place = usePlaceName(pickup?.lat, pickup?.lng);
   return (
-    <Card>
-      <Text style={styles.title}>
-        {booking.estimatedHours ?? '?'} hr · {(booking.amountPaise / 100).toFixed(2)} est
-      </Text>
-      <Text style={styles.dim}>₹{((booking.pricePerHourPaise ?? 15000) / 100).toFixed(0)}/hr fixed · you keep {(booking.partnerPayoutPaise / 100).toFixed(2)} (est)</Text>
+    <Card style={styles.reqCard}>
+      <View style={styles.reqHead}>
+        <View>
+          <Text style={styles.fare}>₹{(booking.amountPaise / 100).toFixed(0)} <Text style={styles.fareSub}>est · {booking.estimatedHours ?? '?'} hr</Text></Text>
+          <Text style={styles.dim}>You keep {(booking.partnerPayoutPaise / 100).toFixed(2)} · {age(at)}</Text>
+        </View>
+        <StatusPill status={booking.status} />
+      </View>
       <Text style={styles.away}>
         {kmAway !== null
           ? `${formatKm(kmAway)} away from you`
@@ -273,12 +284,7 @@ function RequestCard({
             ? 'Enable GPS to see your distance'
             : 'Distance unknown (customer shared no pickup)'}
       </Text>
-      <Text style={styles.dim}>
-        {booking.id.slice(0, 8)}
-        {` · ${age(at)}`}
-      </Text>
-      <Text style={styles.dim}>Customer: {booking.customerId.slice(0, 8)}</Text>
-      <Text style={styles.dim}>Pickup (where they are): {pickup ? place : 'not shared'}</Text>
+      <Text style={styles.dim}>Pickup: {pickup ? place : 'not shared'}</Text>
       {pickup && me ? (
         <View style={styles.mapWrap}>
           {open ? (
@@ -304,28 +310,42 @@ function RequestCard({
               )}
             </>
           ) : null}
-          <Button title={open ? 'Hide map' : 'See route on map'} onPress={() => setOpen(!open)} />
+          <Button title={open ? 'Hide map' : 'See route'} variant="secondary" small onPress={() => setOpen(!open)} />
         </View>
       ) : null}
-      <StatusPill status={booking.status} />
       <View style={styles.row}>
-        <Button title={busy ? 'Accepting…' : 'Accept'} onPress={onAccept} disabled={busy} />
-        <Button title="Reject" onPress={onReject} disabled={busy} />
+        <View style={styles.flex}>
+          <Button title="Accept" loading={busy} onPress={onAccept} disabled={busy} />
+        </View>
+        <View style={styles.flex}>
+          <Button title="Reject" variant="secondary" onPress={onReject} disabled={busy} />
+        </View>
       </View>
     </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, gap: 12 },
+  dot: { width: 12, height: 12, borderRadius: 6 },
+  dotOn: { backgroundColor: '#16a34a' },
+  dotOff: { backgroundColor: '#d1d5db' },
+  presence: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  presenceOn: { borderColor: '#16a34a', borderWidth: 1.5 },
+  presenceOff: {},
+  presenceCol: { flex: 1, gap: 2 },
+  presenceTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  dim: { color: '#6b7280', fontSize: 13 },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 18, fontWeight: '700' },
-  away: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  dim: { color: '#6b7280' },
-  row: { flexDirection: 'row', gap: 12 },
+  count: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  reqCard: { gap: 8 },
+  reqHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  fare: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  fareSub: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
+  away: { fontSize: 15, fontWeight: '700', color: '#4338ca' },
   mapWrap: { gap: 8 },
-  map: { height: 180 },
-  route: { color: '#4338ca', fontWeight: '700' },
+  map: { height: 180, borderRadius: 12 },
+  route: { color: '#4338ca', fontWeight: '700', fontSize: 13 },
+  row: { flexDirection: 'row', gap: 10 },
+  flex: { flex: 1 },
   error: { color: '#dc2626' },
 });

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { ParkingSpace } from '../../../../packages/types/src';
 import { nearbySpaces } from '../../../../packages/api/src/index';
-import { Button, PriceTag, SegmentedControl } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, Divider, EmptyState, FadeIn, ListRow, PriceTag, Screen, SectionLabel, SegmentedControl, SkeletonBlock } from '../../../../packages/ui/src';
 import { coordsLabel, usePlaceNames } from '../../../../packages/mobile/src/map/geocode';
 
 type Space = ParkingSpace & { distanceKm: number };
@@ -23,11 +23,10 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
   const [region, setRegion] = useState({ latitude: FALLBACK.latitude, longitude: FALLBACK.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 });
   const [center, setCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [radius, setRadius] = useState(5);
-  const [spaces, setSpaces] = useState<Space[]>([]);
+  const [spaces, setSpaces] = useState<Space[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const placeNames = usePlaceNames(spaces.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })));
-  const mounted = useRef(false);
+  const placeNames = usePlaceNames((spaces ?? []).map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })));
 
   const fetchFor = useCallback(async (lat: number, lng: number, r: number): Promise<void> => {
     setLoading(true);
@@ -63,7 +62,6 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
   }, [fetchFor, radius]);
 
   useEffect(() => {
-    mounted.current = true;
     void locateAndFetch();
   }, [locateAndFetch]);
 
@@ -82,19 +80,23 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
+  const list = spaces ?? [];
+  const cheapest = list.length > 0 ? list.reduce((a, b) => (a.pricePerHourPaise <= b.pricePerHourPaise ? a : b)) : null;
+
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => locateAndFetch()} />}
-    >
+    <Screen refreshing={loading} onRefresh={() => locateAndFetch()}>
+      <AppHeader
+        title="Find parking"
+        subtitle={center ? `Around ${center.latitude.toFixed(3)}, ${center.longitude.toFixed(3)}` : 'Locating you…'}
+        right={cheapest ? <PriceTag paise={cheapest.pricePerHourPaise} label="from /hr" /> : undefined}
+      />
       <SafeMapView
         initialRegion={region}
         center={{ latitude: region.latitude, longitude: region.longitude }}
         onRegionChangeComplete={(r: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => setRegion(r)}
         style={styles.map}
       >
-        {spaces.map((s) => (
+        {list.map((s) => (
           <Marker
             key={s.id}
             coordinate={{ latitude: s.lat, longitude: s.lng }}
@@ -104,12 +106,8 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
           />
         ))}
       </SafeMapView>
-      <View style={styles.bar}>
-        <Text style={styles.count}>
-          {loading ? 'Searching…' : `${spaces.length} space(s) within ${radius} km`}
-        </Text>
-        {center ? <Text style={styles.hint}>Search center {center.latitude.toFixed(3)}, {center.longitude.toFixed(3)} · drag the map, then Search this area.</Text> : null}
-        {spaces[0] ? <PriceTag paise={spaces[0].pricePerHourPaise} label="from /hr" /> : null}
+      <Card>
+        <Text style={styles.cardTitle}>Search area</Text>
         <SegmentedControl
           options={RADII.map((r) => ({ value: r, label: `${r}km` }))}
           value={radius}
@@ -119,33 +117,52 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
             void fetchFor(c.latitude, c.longitude, r);
           }}
         />
-        <Button title="Search this area (map center)" onPress={() => fetchFor(region.latitude, region.longitude, radius)} disabled={loading} />
-        <Button title="Use my location" onPress={() => locateAndFetch()} disabled={loading} />
-        {spaces.length === 0 && !loading ? (
-          <Text style={styles.hint}>Nothing here — the space may be paused, pinned outside this radius, or listed on another server. Try a bigger radius or Search this area.</Text>
-        ) : null}
-        {spaces.map((s) => (
-          <Pressable key={`list-${s.id}`} style={styles.row} onPress={() => onBookParking(s)}>
-            <Text style={styles.name}>{s.title} · {s.distanceKm} km</Text>
-            <Text style={styles.addr}>{placeNames[s.id] ?? coordsLabel(s.lat, s.lng)}</Text>
-            <PriceTag paise={s.pricePerHourPaise} label="per hr" />
-          </Pressable>
-        ))}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </View>
-    </ScrollView>
+        <View style={styles.btnRow}>
+          <View style={styles.btnFlex}>
+            <Button title="This area" variant="secondary" onPress={() => fetchFor(region.latitude, region.longitude, radius)} disabled={loading} />
+          </View>
+          <View style={styles.btnFlex}>
+            <Button title="My location" variant="secondary" onPress={() => locateAndFetch()} disabled={loading} />
+          </View>
+        </View>
+        <Text style={styles.hint}>Drag the map, then “This area”. Tap a pin's callout to book.</Text>
+      </Card>
+      <SectionLabel>{loading ? 'Searching…' : `${list.length} space${list.length === 1 ? '' : 's'} within ${radius} km · nearest first`}</SectionLabel>
+      {spaces === null ? (
+        <SkeletonBlock height={180} />
+      ) : list.length === 0 && !loading ? (
+        <EmptyState
+          title="Nothing parked here"
+          hint="The space may be paused, pinned outside this radius, or listed on another server. Try a bigger radius or Search this area."
+        />
+      ) : (
+        <Card style={styles.listCard}>
+          {list.map((s, i) => (
+            <View key={`list-${s.id}`}>
+              <FadeIn delay={Math.min(i, 6) * 50}>
+                <ListRow
+                  title={s.title}
+                  sub={`${placeNames[s.id] ?? coordsLabel(s.lat, s.lng)} · ${s.distanceKm} km away`}
+                  right={<PriceTag paise={s.pricePerHourPaise} label="/hr" />}
+                  onPress={() => onBookParking(s)}
+                />
+              </FadeIn>
+              {i < list.length - 1 ? <Divider /> : null}
+            </View>
+          ))}
+        </Card>
+      )}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { flexGrow: 1 },
-  map: { height: 320 },
-  bar: { padding: 12, gap: 8 },
-  count: { fontSize: 16, fontWeight: '600' },
+  map: { height: 300, borderRadius: 16 },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  btnFlex: { flex: 1 },
   hint: { color: '#6b7280', fontSize: 12 },
-  row: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, gap: 4 },
-  name: { fontSize: 16, fontWeight: '600' },
-  addr: { color: '#6b7280', fontSize: 13 },
+  listCard: { paddingHorizontal: 2, paddingVertical: 2 },
   error: { color: '#dc2626' },
 });

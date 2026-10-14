@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
 import type { Booking, ParkingSpace } from '../../../../packages/types/src';
 import { createSpace, listBookings, mySpaces, updateSpace, acceptBooking } from '../../../../packages/api/src/index';
-import { Button, Card, Field, StatusPill } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, EmptyState, FadeIn, Field, Screen, SectionLabel, StatusPill } from '../../../../packages/ui/src';
 import { getSocket, ensureSocket } from '../../../../packages/mobile/src/socket';
 
 const FALLBACK_COORDS = { lat: 28.6315, lng: 77.2167 }; // Connaught Place
@@ -21,6 +21,7 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
   const [locNote, setLocNote] = useState('Pin location not read yet — tap "Use my location".');
   const [locBusy, setLocBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [listing, setListing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (silent = false): Promise<void> => {
@@ -114,6 +115,7 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
       setError('Enter a valid price per hour.');
       return;
     }
+    setListing(true);
     try {
       // Pin the space where the host actually is. Fixed demo coords were the
       // reason customer phones never saw the listing: the customer searches
@@ -125,6 +127,8 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
       await refresh(true);
     } catch {
       setError('Create failed — check title and price.');
+    } finally {
+      setListing(false);
     }
   };
 
@@ -171,50 +175,74 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
   };
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(false)} />}
-    >
-      <Text style={styles.title}>My spaces ({spaces.length})</Text>
+    <Screen refreshing={loading} onRefresh={() => refresh(false)}>
+      <AppHeader title="My spaces" subtitle={`${spaces.filter((s) => s.isActive).length} live · ${incoming.length} parking request${incoming.length === 1 ? '' : 's'}`} />
+      <SectionLabel>List a new space</SectionLabel>
       <Card>
         <Field label="Title" placeholder="Basement slot A1" value={title} onChangeText={setTitle} />
         <Field label="Price/hr (₹)" placeholder="80" keyboardType="numeric" value={price} onChangeText={setPrice} />
         <Text style={styles.dim}>{locNote}</Text>
-        <Button title={locBusy ? 'Reading GPS…' : coords ? `Location set (${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)}) — retake` : 'Use my location'} onPress={useMyLocation} disabled={locBusy} />
-        <Button title="List space" onPress={add} />
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Button title={locBusy ? 'Locating…' : 'Use my location'} variant="secondary" onPress={useMyLocation} disabled={locBusy} />
+          </View>
+          <View style={styles.flex}>
+            <Button title="List space" loading={listing} onPress={add} disabled={listing} />
+          </View>
+        </View>
       </Card>
-      {spaces.map((s) => (
-        <Card key={s.id}>
-          <Text style={styles.title}>{s.title}</Text>
-          <Text style={styles.dim}>
-            ₹{(s.pricePerHourPaise / 100).toFixed(0)}/hr · {s.isActive ? 'live' : 'paused'} · {s.lat.toFixed(3)}, {s.lng.toFixed(3)}
-          </Text>
-          <Button title={s.isActive ? 'Pause' : 'Activate'} onPress={() => toggle(s)} />
-          <Button title="Repin to my GPS" onPress={() => repin(s)} />
-        </Card>
+      {spaces.length > 0 ? <SectionLabel>Your spaces ({spaces.length})</SectionLabel> : null}
+      {spaces.map((s, i) => (
+        <FadeIn key={s.id} delay={Math.min(i, 5) * 60}>
+          <Card>
+            <View style={styles.split}>
+              <View style={styles.flex}>
+                <Text style={styles.title}>{s.title}</Text>
+                <Text style={styles.dim}>₹{(s.pricePerHourPaise / 100).toFixed(0)}/hr · {s.lat.toFixed(3)}, {s.lng.toFixed(3)}</Text>
+              </View>
+              <View style={[styles.dot, s.isActive ? styles.dotOn : styles.dotOff]} />
+            </View>
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <Button title={s.isActive ? 'Pause' : 'Activate'} small variant="secondary" onPress={() => toggle(s)} />
+              </View>
+              <View style={styles.flex}>
+                <Button title="Repin to GPS" small variant="secondary" onPress={() => repin(s)} />
+              </View>
+            </View>
+          </Card>
+        </FadeIn>
       ))}
-      <Text style={styles.title}>Parking requests ({incoming.length})</Text>
-      {incoming.length === 0 ? <Text style={styles.dim}>No pending parking bookings on your spaces.</Text> : null}
+      <SectionLabel>Parking requests ({incoming.length})</SectionLabel>
+      {incoming.length === 0 ? <EmptyState title="No parking requests" hint="Bookings on your spaces land here — accept to confirm them." /> : null}
       {incoming.map((b) => (
         <Card key={b.id}>
-          <StatusPill status={b.status} />
-          <Text style={styles.dim}>
-            {b.id.slice(0, 8)} · {(b.amountPaise / 100).toFixed(2)}
-            {b.space ? ` · ${b.space.title}` : ''}
-          </Text>
-          <Button title="Accept" onPress={() => accept(b.id)} />
+          <View style={styles.split}>
+            <View style={styles.flex}>
+              <Text style={styles.title}>₹{(b.amountPaise / 100).toFixed(0)}</Text>
+              <Text style={styles.dim}>
+                {b.id.slice(0, 8)}
+                {b.space ? ` · ${b.space.title}` : ''}
+              </Text>
+            </View>
+            <StatusPill status={b.status} />
+          </View>
+          <Button title="Accept booking" onPress={() => accept(b.id)} />
         </Card>
       ))}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, gap: 12 },
-  title: { fontSize: 18, fontWeight: '700' },
-  dim: { color: '#6b7280' },
+  dim: { color: '#6b7280', fontSize: 13 },
+  row: { flexDirection: 'row', gap: 10 },
+  flex: { flex: 1 },
+  split: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { fontSize: 17, fontWeight: '800', color: '#111827' },
+  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#d1d5db' },
+  dotOn: { backgroundColor: '#16a34a' },
+  dotOff: { backgroundColor: '#d1d5db' },
   error: { color: '#dc2626' },
 });

@@ -9,3 +9,6 @@ export * from './SegmentedControl';
 export * from './OtpInput';
 export * from './Motion';
 export * from './TabBar';
+export * from './Wizard';
+export * from './Chrome';
+export * from './ListRow';

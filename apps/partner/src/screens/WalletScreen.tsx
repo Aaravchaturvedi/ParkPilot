@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { Wallet } from '../../../../packages/types/src';
 import { wallet } from '../../../../packages/api/src/index';
-import { Button, Card, PriceTag, SkeletonBlock } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, Screen, SectionLabel, SkeletonBlock, Stat } from '../../../../packages/ui/src';
 
 export function WalletScreen({ active = true }: { active?: boolean }): React.JSX.Element {
   const [w, setW] = useState<Wallet | null>(null);
@@ -32,31 +32,36 @@ export function WalletScreen({ active = true }: { active?: boolean }): React.JSX
   }, [active, load]);
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(false)} />}
-    >
-      <Text style={styles.title}>Earnings</Text>
+    <Screen refreshing={loading} onRefresh={() => load(false)}>
+      <AppHeader title="Earnings" subtitle="Payout every 3–4 days · UPI/NEFT (mock)" />
       {w ? (
-        <Card>
-          <PriceTag paise={w.asPartner.earnedPaise} label="Earned" />
-          <PriceTag paise={w.asPartner.pendingPaise} label="Pending payout" />
-          <Text style={styles.dim}>Payout every 3–4 days via UPI/NEFT (mock).</Text>
-        </Card>
-      ) : !error ? (
-        <SkeletonBlock height={120} />
-      ) : null}
-      <Button title="Refresh" onPress={() => load(false)} disabled={loading} />
+        <>
+          <Card style={styles.hero}>
+            <Text style={styles.kicker}>Total earned</Text>
+            <Text style={styles.balance}>₹{(w.asPartner.earnedPaise / 100).toFixed(0)}</Text>
+            <View style={styles.split}>
+              <Stat label="Pending payout" value={`₹${(w.asPartner.pendingPaise / 100).toFixed(0)}`} />
+            </View>
+          </Card>
+          <Button title="Refresh" variant="secondary" onPress={() => load(false)} disabled={loading} />
+        </>
+      ) : (
+        <SkeletonBlock height={190} />
+      )}
+      <SectionLabel>How it works</SectionLabel>
+      <Card>
+        <Text style={styles.dim}>Each completed timer bills per-minute (1-hr minimum) at ₹150/hr. Your 80% lands here after the customer pays; pending shows rides still running.</Text>
+      </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { padding: 16, gap: 12 },
-  title: { fontSize: 20, fontWeight: '700' },
-  dim: { color: '#6b7280' },
+  hero: { alignItems: 'center', borderColor: '#4f46e5', borderWidth: 1.5 },
+  kicker: { fontSize: 13, fontWeight: '800', color: '#4338ca', textTransform: 'uppercase', letterSpacing: 1 },
+  balance: { fontSize: 52, fontWeight: '800', color: '#111827', fontVariant: ['tabular-nums'] },
+  split: { flexDirection: 'row', alignSelf: 'stretch' },
+  dim: { color: '#6b7280', fontSize: 13 },
   error: { color: '#dc2626' },
 });

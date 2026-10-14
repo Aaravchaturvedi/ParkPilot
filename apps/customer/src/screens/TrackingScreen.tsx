@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
 import { cancelBooking, listBookings, payBooking, requestStopOtp, verifyStopOtp } from '../../../../packages/api/src/index';
-import { Button, Card, OtpInput, PriceTag, StatusPill, FadeIn } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, OtpInput, PriceTag, Screen, SectionLabel, StatusPill } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 interface DriverPing {
@@ -216,95 +216,93 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   };
 
   return (
-    <FadeIn style={styles.fade}>
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Trip {bookingId.slice(0, 8)}</Text>
-      {status ? <StatusPill status={status} /> : <Text>Loading…</Text>}
+    <Screen>
+      <AppHeader
+        title={`Trip ${bookingId.slice(0, 8)}`}
+        subtitle={booking?.estimatedHours ? `Estimate ${booking.estimatedHours} hr · ₹${(rate / 100).toFixed(0)}/hr` : 'Live trip'}
+        right={status ? <StatusPill status={status} /> : undefined}
+      />
 
       {status === 'ACCEPTED' ? (
-        <Card>
-          <Text style={styles.heading}>Driver is on the way</Text>
+        <Card style={styles.hero}>
+          <Text style={styles.heroKicker}>Driver is on the way</Text>
           {startOtp ? (
             <>
               <Text style={styles.otp}>{startOtp}</Text>
-              <Text style={styles.dim}>Read this 4-digit code to your driver when they arrive. The timer starts when they enter it. Valid 10 min.</Text>
+              <Text style={styles.dim}>Read this code to your driver on arrival — the timer starts on verify. Valid 10 min.</Text>
             </>
           ) : (
-            <Text style={styles.dim}>Your driver hasn't requested the start code yet — it appears here automatically.</Text>
+            <Text style={styles.dim}>The start code appears here the moment your driver requests it.</Text>
           )}
         </Card>
       ) : null}
 
       {showLiveMap && pickup ? (
-        <Card>
-          <Text style={styles.heading}>Where's my driver?</Text>
-          <Text style={styles.dim}>Pickup: {pickupPlace}</Text>
-          <SafeMapView
-            key={`trk-${pos ? 'live' : 'wait'}-${frame}`}
-            initialRegion={mapRegion}
-            style={styles.map}
-            route={pos ? { from: { latitude: pos.lat, longitude: pos.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } } : null}
-            onRouteInfo={setRouteInfo}
-          >
-            <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" />
-            {pos ? <Marker coordinate={{ latitude: pos.lat, longitude: pos.lng }} title="Driver" pinColor="blue" /> : null}
-          </SafeMapView>
-          <Text style={styles.dim}>
-            {pos
-              ? routeInfo
-                ? `Driver ${routeInfo.distanceKm.toFixed(1)} km away · ~${Math.max(1, Math.round(routeInfo.durationMin))} min (${pings} live updates)`
-                : `Driver located (${pings} live updates) — finding their route…`
-              : 'Waiting for your driver to start broadcasting…'}
-          </Text>
-          {pos ? <Button title="Recenter map" variant="secondary" onPress={() => setFrame((n) => n + 1)} /> : null}
-        </Card>
+        <>
+          <SectionLabel>Live location</SectionLabel>
+          <Card style={styles.mapCard}>
+            <SafeMapView
+              key={`trk-${pos ? 'live' : 'wait'}-${frame}`}
+              initialRegion={mapRegion}
+              style={styles.map}
+              route={pos ? { from: { latitude: pos.lat, longitude: pos.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } } : null}
+              onRouteInfo={setRouteInfo}
+            >
+              <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" />
+              {pos ? <Marker coordinate={{ latitude: pos.lat, longitude: pos.lng }} title="Driver" pinColor="blue" /> : null}
+            </SafeMapView>
+            <Text style={styles.dim}>
+              Pickup: {pickupPlace}
+              {pos ? (routeInfo ? ` · driver ${routeInfo.distanceKm.toFixed(1)} km away (~${Math.max(1, Math.round(routeInfo.durationMin))} min)` : ` · driver located (${pings} updates)`) : ' · waiting for driver broadcast…'}
+            </Text>
+            {pos ? <Button title="Recenter" variant="secondary" small onPress={() => setFrame((n) => n + 1)} /> : null}
+          </Card>
+        </>
       ) : null}
 
       {status === 'ONGOING' && booking?.startedAt ? (
-        <Card>
-          <Text style={styles.heading}>Timer running</Text>
-          <Text style={styles.timer}>{formatElapsed(elapsedSec)}</Text>
-          <Text style={styles.dim}>
-            Running bill: {(running.amountPaise / 100).toFixed(2)} ({running.billedMinutes} min · 1-hr minimum{booking.estimatedHours ? ` · est ${booking.estimatedHours} hr` : ''})
-          </Text>
-          <Text>Driver position: {pos ? `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)} (${pings} updates)` : 'waiting for driver…'}</Text>
-          {!stopSent ? (
-            <Button title={busy ? 'Ending…' : 'End trip'} onPress={endTrip} disabled={busy} />
-          ) : (
-            <>
-              <Text style={styles.dim}>Stop code sent to your driver — ask them to read the 4-digit code back, then confirm:</Text>
-              <OtpInput value={stopCode} onChange={(v) => { setStopCode(v); setOtpError(false); }} error={otpError} label="Driver's code" />
-              <Button title={busy ? 'Confirming…' : 'Confirm end & see bill'} onPress={confirmEnd} disabled={busy} />
-            </>
-          )}
-        </Card>
+        <>
+          <SectionLabel>Timer</SectionLabel>
+          <Card style={styles.hero}>
+            <Text style={styles.timer}>{formatElapsed(elapsedSec)}</Text>
+            <PriceTag paise={running.amountPaise} label="Running" />
+            <Text style={styles.dim}>{running.billedMinutes} min billed · 1-hr minimum{booking.estimatedHours ? ` · est ${booking.estimatedHours} hr` : ''}</Text>
+            {!stopSent ? (
+              <Button title="End trip" block loading={busy} onPress={endTrip} disabled={busy} />
+            ) : (
+              <>
+                <Text style={styles.dim}>Stop code sent to your driver — type the 4-digit code they read back:</Text>
+                <OtpInput value={stopCode} onChange={(v) => { setStopCode(v); setOtpError(false); }} error={otpError} />
+                <Button title="Confirm end & see bill" block loading={busy} onPress={confirmEnd} disabled={busy} />
+              </>
+            )}
+          </Card>
+        </>
       ) : null}
 
-      {booking ? <PriceTag paise={booking.amountPaise} label={status === 'COMPLETED' && booking.billedMinutes ? `Final (${booking.billedMinutes} min)` : 'Fare so far'} /> : null}
-      <Text>Payment: {booking?.paymentStatus ?? '…'}</Text>
-      {status === 'COMPLETED' && booking?.billedMinutes ? (
-        <Text style={styles.dim}>
-          Billed {booking.billedMinutes} min{booking.estimatedHours ? ` (est was ${booking.estimatedHours} hr)` : ''} · paid {(booking.partnerPayoutPaise / 100).toFixed(2)} goes to driver
-        </Text>
-      ) : null}
-      {canPay && status === 'COMPLETED' ? <Button title={busy ? 'Paying…' : 'Pay now (mock)'} onPress={pay} disabled={busy} /> : null}
-      {canCancel ? <Button title={busy ? '…' : 'Cancel trip'} onPress={cancel} disabled={busy} /> : null}
+      <SectionLabel>Bill</SectionLabel>
+      <Card>
+        {booking ? <PriceTag paise={booking.amountPaise} label={status === 'COMPLETED' && booking.billedMinutes ? `Final · ${booking.billedMinutes} min` : 'So far'} /> : null}
+        <Text style={styles.dim}>Payment: {booking?.paymentStatus ?? '…'}</Text>
+        {status === 'COMPLETED' && booking?.billedMinutes ? (
+          <Text style={styles.dim}>Billed {booking.billedMinutes} min · {(booking.partnerPayoutPaise / 100).toFixed(2)} goes to the driver</Text>
+        ) : null}
+        {canPay && status === 'COMPLETED' ? <Button title="Pay now (mock)" block loading={busy} onPress={pay} disabled={busy} /> : null}
+        {canCancel ? <Button title="Cancel trip" variant="secondary" onPress={cancel} disabled={busy} /> : null}
+      </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title="Back to trips" onPress={onDone} />
-    </ScrollView>
-    </FadeIn>
+      <Button title="Back to trips" variant="ghost" onPress={onDone} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  fade: { flex: 1 },
-  root: { flex: 1 },
-  content: { padding: 16, gap: 12 },
-  title: { fontSize: 20, fontWeight: '700' },
-  heading: { fontSize: 16, fontWeight: '700' },
-  map: { height: 240 },
-  otp: { fontSize: 44, fontWeight: '800', textAlign: 'center', letterSpacing: 8 },
-  timer: { fontSize: 40, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
-  dim: { color: '#6b7280' },
+  dim: { color: '#6b7280', fontSize: 13 },
+  hero: { alignItems: 'center', borderColor: '#4f46e5', borderWidth: 1.5 },
+  heroKicker: { fontSize: 13, fontWeight: '800', color: '#4338ca', textTransform: 'uppercase', letterSpacing: 1 },
+  otp: { fontSize: 52, fontWeight: '800', letterSpacing: 10, color: '#111827' },
+  timer: { fontSize: 48, fontWeight: '800', fontVariant: ['tabular-nums'], color: '#111827' },
+  mapCard: { padding: 8, gap: 8 },
+  map: { height: 240, borderRadius: 12 },
   error: { color: '#dc2626' },
 });

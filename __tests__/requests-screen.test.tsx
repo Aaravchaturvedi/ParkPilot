@@ -99,14 +99,14 @@ describe('RequestsScreen', () => {
     expect(getByText(/no requests yet/i)).toBeTruthy();
   });
 
-  it('exposes estimate, rate, pickup and distance on each request', () => {
+  it('exposes estimate, payout, pickup and distance on each request', () => {
     const b = booking('bk-geo-1');
     mockConnect.mockReturnValue({ emitWithAck: jest.fn(), emit: jest.fn() });
     const { getByText } = render(<Harness initial={[{ booking: b, at: Date.now() }]} />);
-    // Estimate + fixed rate + where they are are always visible…
+    // Fare hero + partner keep + where they are are always visible…
     expect(getByText(/2 hr/i)).toBeTruthy();
-    expect(getByText(/150\/hr fixed/i)).toBeTruthy();
-    expect(getByText(/pickup \(where they are\)/i)).toBeTruthy();
+    expect(getByText(/you keep/i)).toBeTruthy();
+    expect(getByText(/pickup/i)).toBeTruthy();
     // …and without device GPS the card says so instead of a fake distance.
     expect(getByText(/enable gps to see your distance|away from you/i)).toBeTruthy();
   });
@@ -117,7 +117,7 @@ describe('RequestsScreen', () => {
       emitWithAck: jest.fn().mockResolvedValue({ ok: true, booking: { ...b, status: 'ACCEPTED' } }),
     });
     const { getByText, queryByText } = render(<Harness initial={[{ booking: b, at: Date.now() }]} />);
-    expect(getByText(/bk-accep/)).toBeTruthy();
+    expect(getByText(/you keep/i)).toBeTruthy();
     fireEvent.press(getByText('Accept'));
     await waitFor(() => expect(queryByText('Accept')).toBeNull());
     // Accepted ride hands off to the App Ride tab via onActive (single source
@@ -141,8 +141,9 @@ describe('RequestsScreen', () => {
     const b = booking('bk-reject-1');
     mockConnect.mockReturnValue({ emitWithAck: jest.fn().mockResolvedValue({ ok: true }) });
     const { getByText, queryByText } = render(<Harness initial={[{ booking: b, at: Date.now() }]} />);
+    expect(getByText(/you keep/i)).toBeTruthy();
     fireEvent.press(getByText('Reject'));
-    await waitFor(() => expect(queryByText(/bk-rejec/)).toBeNull());
+    await waitFor(() => expect(queryByText(/you keep/i)).toBeNull());
   });
 
   it('toggle flips online state only after server confirms', async () => {

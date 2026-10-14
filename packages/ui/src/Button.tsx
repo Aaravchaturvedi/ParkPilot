@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Animated, Pressable, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { theme } from './theme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -10,12 +10,14 @@ interface Props {
   disabled?: boolean;
   variant?: Variant;
   small?: boolean;
+  block?: boolean;
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
 // Press-and-shrink feedback on every button in both apps (single component,
 // so the whole product animates consistently). API is backward compatible.
-export function Button({ title, onPress, disabled, variant = 'primary', small, style }: Props): React.JSX.Element {
+export function Button({ title, onPress, disabled, variant = 'primary', small, block, loading, style }: Props): React.JSX.Element {
   const scale = useRef(new Animated.Value(1)).current;
   const press = (to: number): void => {
     Animated.spring(scale, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 0 }).start();
@@ -26,18 +28,23 @@ export function Button({ title, onPress, disabled, variant = 'primary', small, s
     danger: styles.dangerLabel,
     ghost: styles.ghostLabel,
   } as const;
+  const busy = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      disabled={disabled}
+      disabled={busy}
       onPressIn={() => press(0.96)}
       onPressOut={() => press(1)}
-      style={[styles.base, styles[variant], small && styles.small, disabled && styles.disabled, style]}
+      style={[styles.base, styles[variant], small && styles.small, block && styles.block, busy && styles.disabled, style]}
     >
-      <Animated.Text style={[styles.label, labelStyles[variant], small && styles.smallLabel, { transform: [{ scale }] }]}>
-        {title}
-      </Animated.Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={variant === 'secondary' || variant === 'ghost' ? theme.color.brand : '#fff'} />
+      ) : (
+        <Animated.Text style={[styles.label, labelStyles[variant], small && styles.smallLabel, { transform: [{ scale }] }]}>
+          {title}
+        </Animated.Text>
+      )}
     </Pressable>
   );
 }
@@ -49,6 +56,7 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: theme.color.card, borderWidth: 1, borderColor: theme.color.line },
   danger: { backgroundColor: theme.color.danger },
   ghost: { backgroundColor: 'transparent' },
+  block: { alignSelf: 'stretch' },
   disabled: { opacity: 0.5 },
   label: { fontWeight: '700', fontSize: 16 },
   smallLabel: { fontSize: 14 },

@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { KycStatus } from '../../../../packages/types/src';
 import { submitKyc } from '../../../../packages/api/src/index';
-import { Button, Card } from '../../../../packages/ui/src';
+import { AppHeader, Button, Card, Screen, SectionLabel } from '../../../../packages/ui/src';
+
+const STEPS = ['Documents', 'Review', 'Verified'];
 
 // Mock KYC (Aadhaar/license/police verification via Digio/Hyperverge is Phase B).
 export function KycScreen({ status, onChanged }: { status: KycStatus; onChanged: (s: KycStatus) => void }): React.JSX.Element {
@@ -22,22 +24,50 @@ export function KycScreen({ status, onChanged }: { status: KycStatus; onChanged:
     }
   };
 
+  const stage = status === 'VERIFIED' ? 3 : status === 'SUBMITTED' ? 2 : status === 'REJECTED' ? 0 : 1;
+
   return (
-    <View style={styles.root}>
-      <Text style={styles.title}>Verification</Text>
+    <Screen>
+      <AppHeader title="Verification" subtitle={`Status: ${status}`} />
       <Card>
-        <Text>Status: {status}</Text>
+        <View style={styles.steps}>
+          {STEPS.map((s, i) => {
+            const n = i + 1;
+            const done = n < stage || stage === 3;
+            const now = n === stage && stage < 3;
+            return (
+              <View key={s} style={styles.step}>
+                <View style={[styles.bubble, done && styles.done, now && styles.now]}>
+                  <Text style={[styles.bubbleText, (done || now) && styles.on]}>{done ? '✓' : n}</Text>
+                </View>
+                <Text style={[styles.label, (done || now) && styles.labelOn]}>{s}</Text>
+              </View>
+            );
+          })}
+        </View>
         <Text style={styles.dim}>Mock: Aadhaar + license + police checks plug in here (Phase B).</Text>
-        {status === 'PENDING' ? <Button title={busy ? 'Submitting…' : 'Submit documents (mock)'} onPress={submit} disabled={busy} /> : null}
+        {status === 'PENDING' ? <Button title="Submit documents (mock)" block loading={busy} onPress={submit} disabled={busy} /> : null}
+        {status === 'REJECTED' ? <Button title="Resubmit documents (mock)" block loading={busy} onPress={submit} disabled={busy} /> : null}
       </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-    </View>
+      <SectionLabel>What happens next</SectionLabel>
+      <Card>
+        <Text style={styles.dim}>Submitted documents move to review; verified partners get priority dispatch. Rejected ones can resubmit anytime.</Text>
+      </Card>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 16, gap: 12 },
-  title: { fontSize: 20, fontWeight: '700' },
-  dim: { color: '#6b7280' },
+  dim: { color: '#6b7280', fontSize: 13 },
+  steps: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 4 },
+  step: { alignItems: 'center', gap: 4 },
+  bubble: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center' },
+  done: { backgroundColor: '#16a34a' },
+  now: { backgroundColor: '#4f46e5' },
+  bubbleText: { fontWeight: '800', color: '#6b7280' },
+  on: { color: '#fff' },
+  label: { fontSize: 12, color: '#9ca3af', fontWeight: '600' },
+  labelOn: { color: '#111827', fontWeight: '700' },
   error: { color: '#dc2626' },
 });

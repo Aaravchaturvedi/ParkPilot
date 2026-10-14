@@ -119,6 +119,7 @@ function Shell(): React.JSX.Element {
               active={tab === 'ride'}
               lastUpdate={lastUpdate}
               onTracking={(id) => setTrackingId(id)}
+              onShowTrips={() => goTab('trips')}
             />
           </View>
           <View style={tab === 'trips' ? styles.tabVisible : styles.tabHidden}>

@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { Booking, ParkingSpace } from '../../../../packages/types/src';
 import { summarizeBookings } from '../../../../packages/types/src';
 import { listBookings, mySpaces } from '../../../../packages/api/src/index';
 import { useSession } from '../../../../packages/mobile/src/store/session';
-import { Avatar, Button, Card, SkeletonBlock, Stat, FadeIn, theme } from '../../../../packages/ui/src';
+import { AppHeader, Avatar, Button, Card, Divider, ListRow, Screen, SectionLabel, SkeletonBlock, Stat, FadeIn, theme } from '../../../../packages/ui/src';
 
 // Partner profile: identity + KYC, earnings rollup (agrees with Wallet),
 // fleet (spaces), sign out. Replaces the bare "Out" tab.
@@ -31,17 +31,14 @@ export function ProfileScreen({ online, onSignOut }: { online: boolean; onSignOu
     void refresh(true);
   }, [refresh]);
 
-  if (!user) return <View style={styles.root} />;
+  if (!user) return <View style={{ flex: 1 }} />;
 
   const summary = bookings ? summarizeBookings(bookings, user.id) : null;
   const liveSpaces = spaces ? spaces.filter((s) => s.isActive).length : null;
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(false)} />}
-    >
+    <Screen refreshing={loading} onRefresh={() => refresh(false)}>
+      <AppHeader title="You" subtitle="Partner profile" right={<Avatar name={user.name} size={40} />} />
       <FadeIn>
         <Card style={styles.hero}>
           <Avatar name={user.name} size={64} />
@@ -54,7 +51,7 @@ export function ProfileScreen({ online, onSignOut }: { online: boolean; onSignOu
           </View>
         </Card>
       </FadeIn>
-      <Text style={styles.section}>Earnings</Text>
+      <SectionLabel>Earnings</SectionLabel>
       {summary ? (
         <Card>
           <View style={styles.stats}>
@@ -66,7 +63,7 @@ export function ProfileScreen({ online, onSignOut }: { online: boolean; onSignOu
       ) : (
         <SkeletonBlock height={104} />
       )}
-      <Text style={styles.section}>Fleet</Text>
+      <SectionLabel>Fleet</SectionLabel>
       <Card>
         {spaces ? (
           <View style={styles.stats}>
@@ -78,24 +75,23 @@ export function ProfileScreen({ online, onSignOut }: { online: boolean; onSignOu
           <SkeletonBlock height={88} />
         )}
       </Card>
-      <Text style={styles.section}>Account</Text>
-      <Card>
-        <Text style={styles.dim}>Member since {new Date(user.createdAt).toLocaleDateString()}</Text>
-        <Text style={styles.dim}>Payouts every 3–4 days via UPI/NEFT (mock).</Text>
+      <SectionLabel>Account</SectionLabel>
+      <Card style={styles.padless}>
+        <ListRow title="Member since" right={<Text style={styles.dim}>{new Date(user.createdAt).toLocaleDateString()}</Text>} />
+        <Divider />
+        <ListRow title="Payouts" sub="Every 3–4 days via UPI/NEFT (mock)" />
       </Card>
-      <Button title="Sign out" variant="danger" onPress={onSignOut} />
-    </ScrollView>
+      <Button title="Sign out" variant="danger" block onPress={onSignOut} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.color.bg },
-  content: { padding: 16, gap: 12 },
   hero: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   idCol: { flex: 1, gap: 4 },
   name: { fontSize: theme.type.title, fontWeight: '800', color: theme.color.ink },
   role: { fontSize: theme.type.small, fontWeight: '700', color: theme.color.brandDark },
-  dim: { color: theme.color.sub },
-  section: { fontSize: theme.type.small, fontWeight: '800', color: theme.color.sub, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
+  dim: { color: theme.color.sub, fontSize: 13 },
   stats: { flexDirection: 'row' },
+  padless: { paddingHorizontal: 2, paddingVertical: 2 },
 });
