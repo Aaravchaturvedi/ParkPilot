@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Button, Field } from '../../../ui/src';
+import { friendlyAuthError } from '../../../api/src';
 import { useSession } from '../store/session';
 
 export function LoginScreen({ onSwitch }: { onSwitch: () => void }): React.JSX.Element {
@@ -15,8 +16,8 @@ export function LoginScreen({ onSwitch }: { onSwitch: () => void }): React.JSX.E
     setError(null);
     try {
       await login(email.trim(), password);
-    } catch {
-      setError('Login failed — check email/password.');
+    } catch (e) {
+      setError(friendlyAuthError(e, 'Login failed — try again.'));
     } finally {
       setBusy(false);
     }

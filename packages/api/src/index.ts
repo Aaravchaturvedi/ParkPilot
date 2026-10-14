@@ -6,3 +6,4 @@ export * from './auth';
 export * from './bookings';
 export * from './spaces';
 export * from './host';
+export * from './errors';

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Button, Field } from '../../../ui/src';
+import { friendlyAuthError } from '../../../api/src';
 import { useSession } from '../store/session';
 
 export function RegisterScreen({ onSwitch, role }: { onSwitch: () => void; role?: string }): React.JSX.Element {
@@ -16,8 +17,8 @@ export function RegisterScreen({ onSwitch, role }: { onSwitch: () => void; role?
     setError(null);
     try {
       await register(name.trim(), email.trim(), password, role);
-    } catch {
-      setError('Sign-up failed — email may be taken (min 6-char password).');
+    } catch (e) {
+      setError(friendlyAuthError(e, 'Sign-up failed — try again.'));
     } finally {
       setBusy(false);
     }

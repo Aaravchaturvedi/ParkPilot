@@ -1,37 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { Booking } from '../../../../packages/types/src';
 import { Button, Card, StatusPill } from '../../../../packages/ui/src';
 import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
-interface Incoming {
+export interface Incoming {
   booking: Booking;
   at: number;
 }
 
-export function RequestsScreen({ apiURL, token, online, setOnline, onActive }: { apiURL: string; token: string; online: boolean; setOnline: (v: boolean) => void; onActive: (bookingId: string) => void }): React.JSX.Element {
-  const [incoming, setIncoming] = useState<Incoming[]>([]);
+interface Props {
+  apiURL: string;
+  token: string;
+  online: boolean;
+  setOnline: (v: boolean) => void;
+  incoming: Incoming[];
+  setIncoming: (updater: (list: Incoming[]) => Incoming[]) => void;
+  onActive: (bookingId: string) => void;
+}
+
+// Inbox is fed by the App-level socket listener, so requests arrive no
+// matter which tab is open. This screen only accepts/rejects.
+export function RequestsScreen({ apiURL, token, online, setOnline, incoming, setIncoming, onActive }: Props): React.JSX.Element {
   const [active, setActive] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!online) return;
-    const s = connectSocket(apiURL, token);
-    // Presence doubles as re-announce on reconnect (disconnect clears it server-side).
-    s.emit('partner:online', {});
-    const onRequest = (evt: { booking: Booking }): void => {
-      setIncoming((list) => (list.some((i) => i.booking.id === evt.booking.id) ? list : [{ booking: evt.booking, at: Date.now() }, ...list]));
-    };
-    const onUpdate = (evt: { booking: Booking }): void => {
-      if (evt.booking.partnerId) setActive(evt.booking);
-    };
-    s.on('booking:request', onRequest);
-    s.on('booking:updated', onUpdate);
-    return () => {
-      s.off('booking:request', onRequest);
-      s.off('booking:updated', onUpdate);
-    };
-  }, [online, apiURL, token]);
 
   const accept = async (id: string): Promise<void> => {
     const ack = (await connectSocket(apiURL, token).emitWithAck('booking:accept', { bookingId: id })) as { ok: boolean; error?: string; booking?: Booking };

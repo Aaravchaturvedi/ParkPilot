@@ -1,25 +1,41 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import type { KycStatus } from '../../packages/types/src';
+import type { Booking, KycStatus } from '../../packages/types/src';
 import { SessionProvider, useSession, LoginScreen, RegisterScreen } from '../../packages/mobile/src';
+import { connectSocket } from '../../packages/mobile/src/socket';
 import { KycScreen } from './src/screens/KycScreen';
-import { RequestsScreen } from './src/screens/RequestsScreen';
+import { RequestsScreen, type Incoming } from './src/screens/RequestsScreen';
 import { RideScreen } from './src/screens/RideScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
 import { HostScreen } from './src/screens/HostScreen';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://markets-fed-connectors-resolve.trycloudflare.com';
+const API_URL = 'https://valves-facing-log-eternal.trycloudflare.com';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [tab, setTab] = useState<'requests' | 'ride' | 'wallet' | 'host' | 'kyc'>('requests');
   const [online, setOnline] = useState(false); // survives tab switches (lives in App, not the screen)
+  const [incoming, setIncoming] = useState<Incoming[]>([]);
   const [rideId, setRideId] = useState<string | null>(null);
   const [kyc, setKyc] = useState<KycStatus | null>(null);
+
+  // App-level inbox: requests arrive no matter which tab is open.
+  // (Screen-level listeners died on tab switch, silently dropping requests.)
+  useEffect(() => {
+    if (!token || !user || (user.role !== 'PARTNER' && user.role !== 'ADMIN')) return;
+    const s = connectSocket(API_URL, token);
+    const onRequest = (evt: { booking: Booking }): void => {
+      setIncoming((list) => (list.some((i) => i.booking.id === evt.booking.id) ? list : [{ booking: evt.booking, at: Date.now() }, ...list]));
+    };
+    s.on('booking:request', onRequest);
+    return () => {
+      s.off('booking:request', onRequest);
+    };
+  }, [token, user]);
 
   const goRide = (id: string): void => {
     setRideId(id);
@@ -62,7 +78,7 @@ function Shell(): React.JSX.Element {
     <View style={styles.root}>
       <Text style={styles.title}>Partner · {user.name}</Text>
       {tab === 'requests' ? (
-        <RequestsScreen apiURL={API_URL} token={token} online={online} setOnline={setOnline} onActive={goRide} />
+        <RequestsScreen apiURL={API_URL} token={token} online={online} setOnline={setOnline} incoming={incoming} setIncoming={setIncoming} onActive={goRide} />
       ) : tab === 'ride' ? (
         rideId ? (
           <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />

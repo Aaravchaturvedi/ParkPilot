@@ -153,7 +153,7 @@ export async function completeBooking(bookingId: string, partnerId: string): Pro
   if (b.status !== 'ACCEPTED' && b.status !== 'ONGOING') throw coded(409, 'booking_not_completable');
   return prisma.booking.update({
     where: { id: bookingId },
-    data: { status: 'COMPLETED', paymentStatus: 'COMPLETED' },
+    data: { status: 'COMPLETED' },
     include: BOOKING_FULL,
   }) as Promise<FullBooking>;
 }
@@ -182,7 +182,7 @@ export async function walletSummary(userId: string): Promise<WalletSummary> {
   const [earned, pending, spent] = await Promise.all([
     prisma.booking.aggregate({ where: { partnerId: userId, status: 'COMPLETED' }, _sum: { partnerPayoutPaise: true } }),
     prisma.booking.aggregate({ where: { partnerId: userId, status: { in: ['ACCEPTED', 'ONGOING'] } }, _sum: { partnerPayoutPaise: true } }),
-    prisma.booking.aggregate({ where: { customerId: userId, status: 'COMPLETED' }, _sum: { amountPaise: true } }),
+    prisma.booking.aggregate({ where: { customerId: userId, status: 'COMPLETED', paymentStatus: 'COMPLETED' }, _sum: { amountPaise: true } }),
   ]);
   return {
     currency: 'INR',
