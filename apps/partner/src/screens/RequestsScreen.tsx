@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatKm, haversineKm } from '../../../../packages/types/src';
@@ -249,7 +250,7 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
             {pickup && me ? (
               <View style={styles.mapWrap}>
                 {isOpen ? (
-                  <MapView
+                  <SafeMapView
                     initialRegion={{
                       latitude: (me.lat + pickup.lat) / 2,
                       longitude: (me.lng + pickup.lng) / 2,
@@ -260,7 +261,7 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
                   >
                     <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" />
                     <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup" pinColor="green" />
-                  </MapView>
+                  </SafeMapView>
                 ) : null}
                 <Button title={isOpen ? 'Hide map' : 'See on map'} onPress={() => setExpanded(isOpen ? null : booking.id)} />
               </View>

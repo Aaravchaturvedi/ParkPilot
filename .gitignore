@@ -17,6 +17,18 @@ apps/*/node_modules
 apps/*/.expo
 .expo/
 
+# generated native projects (expo prebuild / run:android|ios output — rebuild
+# locally with `npx expo run:android`; never commit)
+apps/*/android
+apps/*/ios
+
+# signing & store credentials (local-only, never commit)
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+credentials.json
+
 # OS / editor
 .DS_Store
 *.log

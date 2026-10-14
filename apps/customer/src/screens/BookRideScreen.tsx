@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking, BookingStatus, DriverHoursQuote } from '../../../../packages/types/src';
 import { cancelBooking, createBooking, quoteDriverHours } from '../../../../packages/api/src/index';
@@ -170,13 +171,13 @@ export function BookRideScreen({
       {/* Pickup map: the partner travels to YOU. Drag the map, confirm pin,
           or use GPS. This pin is exposed to partners with your distance. */}
       <View style={styles.pickerCard}>
-        <MapView
+        <SafeMapView
           initialRegion={mapCenter}
           onRegionChangeComplete={(r: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => setMapCenter(r)}
           style={styles.map}
         >
           {pickup ? <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" /> : null}
-        </MapView>
+        </SafeMapView>
         <Text style={styles.crosshair}>＋ center = your location</Text>
         <View style={styles.row}>
           <Button

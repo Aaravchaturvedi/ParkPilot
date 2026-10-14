@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { ParkingSpace } from '../../../../packages/types/src';
 import { nearbySpaces } from '../../../../packages/api/src/index';
@@ -85,7 +86,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => locateAndFetch()} />}
     >
-      <MapView
+      <SafeMapView
         initialRegion={region}
         onRegionChangeComplete={(r: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => setRegion(r)}
         style={styles.map}
@@ -99,7 +100,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
             onCalloutPress={() => onBookParking(s)}
           />
         ))}
-      </MapView>
+      </SafeMapView>
       <View style={styles.bar}>
         <Text style={styles.count}>
           {loading ? 'Searching…' : `${spaces.length} space(s) within ${radius} km`}

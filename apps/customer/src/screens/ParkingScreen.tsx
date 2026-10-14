@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import type { Booking, ParkingQuote, ParkingSpace } from '../../../../packages/types/src';
 import { createBooking, listBookings, payBooking } from '../../../../packages/api/src/index';
 import { quoteParking } from '../../../../packages/api/src/index';
@@ -96,12 +97,12 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
         {space.address} · {paiseToRupees(space.pricePerHourPaise)}/hr
       </Text>
       {/* The selected park location on a real map — what you picked is what you get. */}
-      <MapView
+      <SafeMapView
         initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
         style={styles.map}
       >
         <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} />
-      </MapView>
+      </SafeMapView>
       <Text style={styles.dim}>
         Pinned at {space.lat.toFixed(4)}, {space.lng.toFixed(4)}
       </Text>
