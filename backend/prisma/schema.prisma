@@ -122,6 +122,18 @@ model Booking {
   dropLat           Float?
   dropLng           Float?
   distanceKm        Float?
+  // Timer model (DRIVER): fixed platform ₹/hr × estimated hours at booking,
+  // final bill recomputed from actual elapsed time at stop (per-minute
+  // round-up, first-hour minimum). OTP handshake gates start/stop.
+  estimatedHours    Float?
+  pricePerHourPaise Int?
+  startOtp          String?
+  startOtpExpiresAt DateTime?
+  startedAt         DateTime?
+  endOtp            String?
+  endOtpExpiresAt   DateTime?
+  endedAt           DateTime?
+  billedMinutes     Int?
   // Fare math: amount = platformFee + partnerPayout, always (see services/pricing.js).
   amountPaise       Int
   commissionBps     Int           @default(2000) // 2000bps = 20% platform take

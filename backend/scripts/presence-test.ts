@@ -47,7 +47,7 @@ interface Created {
   const d = await connect(par.accessToken);
 
   // offline partner gets nothing
-  let b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', distanceKm: 5 })) as unknown as Created;
+  let b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', hours: 1 })) as unknown as Created;
   console.log('offline notified:', JSON.stringify(b.notified));
   if (b.notified.length !== 0) throw new Error('offline partner was notified');
 
@@ -57,14 +57,14 @@ interface Created {
     d.once('booking:request', (m: Record<string, unknown>) => res(m));
     setTimeout(() => rej(new Error('no booking:request')), 5000);
   });
-  b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', distanceKm: 5 })) as unknown as Created;
+  b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', hours: 1 })) as unknown as Created;
   console.log('online notified:', JSON.stringify(b.notified));
   const got = (await req).booking as { id: string };
   if (!b.notified.includes(par.user.id) || got.id !== b.booking.id) throw new Error('online partner missed');
 
   // go offline -> nothing again
   await d.emitWithAck('partner:offline', {});
-  b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', distanceKm: 5 })) as unknown as Created;
+  b = (await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', hours: 1 })) as unknown as Created;
   console.log('offline-again notified:', JSON.stringify(b.notified));
   if (b.notified.length !== 0) throw new Error('offline partner was notified');
 

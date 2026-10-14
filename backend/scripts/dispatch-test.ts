@@ -60,7 +60,7 @@ interface Reg {
   const reqFar = once(f.socket, 'booking:request', 2500)
     .then(() => 'LEAKED')
     .catch(() => 'none');
-  const b = await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', distanceKm: 5, pickupLat: 28.62, pickupLng: 77.21 });
+  const b = await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', hours: 1, pickupLat: 28.62, pickupLng: 77.21 });
   const bj = b.json as unknown as { booking: { id: string }; notified: string[] };
   console.log('notified:', JSON.stringify(bj.notified));
   const got = await reqNear;
@@ -77,7 +77,7 @@ interface Reg {
   console.log('accept ack:', accAck.ok, '| accepted:', accEvt.status, '| updated:', updEvt.status);
 
   // second booking rejected by far partner -> customer notified, status stays REQUESTED
-  const b2 = await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', distanceKm: 3, pickupLat: 19.08, pickupLng: 72.88 });
+  const b2 = await rest('POST', '/bookings', cus.accessToken, { type: 'DRIVER', hours: 1, pickupLat: 19.08, pickupLng: 72.88 });
   const b2j = b2.json as unknown as { booking: { id: string } };
   const rejected = once(c.socket, 'booking:rejected');
   const rejAck = (await f.socket.emitWithAck('booking:reject', { bookingId: b2j.booking.id })) as { ok: boolean };

@@ -1,7 +1,7 @@
 import type { Booking, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { coded } from '../middleware/async';
-import { quoteDriverFare, quoteParkingFare, DEFAULT_COMMISSION_BPS } from './pricing';
+import { quoteDriverHours, quoteParkingFare, computeTimerBill, makeOtp, OTP_TTL_MS, DRIVER_RATE_PER_HOUR_PAISE, DEFAULT_COMMISSION_BPS } from './pricing';
 
 const PUBLIC_USER_SELECT = {
   id: true,
@@ -13,7 +13,7 @@ const PUBLIC_USER_SELECT = {
   createdAt: true,
 } as const;
 
-const BOOKING_FULL: Prisma.BookingInclude = {
+export const BOOKING_FULL: Prisma.BookingInclude = {
   customer: { select: PUBLIC_USER_SELECT },
   partner: { select: PUBLIC_USER_SELECT },
   vehicle: true,
@@ -36,12 +36,9 @@ function bpsOrDefault(bps: number | undefined): number {
 
 export interface DriverBookingInput {
   customerId: string;
-  distanceKm: number;
-  vehicleId?: string;
+  hours: number;
   pickupLat?: number;
   pickupLng?: number;
-  dropLat?: number;
-  dropLng?: number;
   commissionBps?: number;
 }
 
@@ -53,25 +50,19 @@ export interface ParkingBookingInput {
 }
 
 export async function createDriverBooking(input: DriverBookingInput): Promise<FullBooking> {
-  const { customerId, distanceKm, vehicleId, pickupLat, pickupLng, dropLat, dropLng, commissionBps } = input;
-  if (!(distanceKm > 0)) throw coded(400, 'distanceKm_must_be_positive');
-  let vehicle = null;
-  if (vehicleId) {
-    vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
-    if (!vehicle || !vehicle.isActive) throw coded(404, 'vehicle_not_available');
-  }
-  const q = quoteDriverFare(distanceKm, bpsOrDefault(commissionBps));
+  const { customerId, hours, pickupLat, pickupLng, commissionBps } = input;
+  if (!(hours > 0)) throw coded(400, 'hours_must_be_positive');
+  // Fixed platform rate: the customer books estimated HOURS, never a distance.
+  const q = quoteDriverHours(hours, bpsOrDefault(commissionBps));
   return prisma.booking.create({
     data: {
       type: 'DRIVER',
       status: 'REQUESTED',
       customerId,
-      vehicleId: vehicle ? vehicle.id : null,
       pickupLat: pickupLat ?? null,
       pickupLng: pickupLng ?? null,
-      dropLat: dropLat ?? null,
-      dropLng: dropLng ?? null,
-      distanceKm,
+      estimatedHours: hours,
+      pricePerHourPaise: DRIVER_RATE_PER_HOUR_PAISE,
       amountPaise: q.amountPaise,
       commissionBps: q.commissionBps,
       platformFeePaise: q.platformFeePaise,
@@ -116,20 +107,128 @@ export async function getOwnBookings(userId: string): Promise<FullBooking[]> {
 export async function getBookingForParty(bookingId: string, userId: string): Promise<FullBooking> {
   const b = (await prisma.booking.findUnique({ where: { id: bookingId }, include: BOOKING_FULL })) as FullBooking | null;
   if (!b) throw coded(404, 'booking_not_found');
-  if (b.customerId !== userId && b.partnerId !== userId) throw coded(403, 'not_your_booking');
-  return b;
+  if (b.customerId === userId || b.partnerId === userId) return b;
+  // Hosts own their parking bookings via the space even before they accept
+  // (partnerId is still null at REQUESTED). Without this the host can never
+  // join/track their own incoming parking request.
+  if (b.spaceId) {
+    const space = await prisma.parkingSpace.findUnique({ where: { id: b.spaceId }, select: { ownerId: true } });
+    if (space && space.ownerId === userId) return b;
+  }
+  throw coded(403, 'not_your_booking');
 }
 
 // Day 7 sockets reuse these transitions.
+// Accept is atomic: UPDATE ... WHERE status='REQUESTED' so two partners
+// racing the same request cannot both win — the loser gets 409.
 export async function acceptBooking(bookingId: string, partnerId: string): Promise<FullBooking> {
   const partner = await prisma.user.findUnique({ where: { id: partnerId } });
   if (!partner || (partner.role !== 'PARTNER' && partner.role !== 'ADMIN')) throw coded(403, 'only_partners_accept');
-  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  const b = await prisma.booking.findUnique({ where: { id: bookingId }, include: { space: { select: { ownerId: true } } } });
   if (!b) throw coded(404, 'booking_not_found');
   if (b.status !== 'REQUESTED') throw coded(409, 'booking_not_requested');
+  // Parking bookings belong to a space: only its owner (or admin) may accept.
+  // Driver bookings are open to any partner (first-come, first-served).
+  if (b.type === 'PARKING') {
+    const ownerId = b.space?.ownerId;
+    if (!ownerId) throw coded(404, 'space_not_found');
+    if (ownerId !== partnerId && partner.role !== 'ADMIN') throw coded(403, 'only_space_owner_accepts');
+  }
+  const updated = await prisma.booking.updateMany({
+    where: { id: bookingId, status: 'REQUESTED' },
+    data: { partnerId, status: 'ACCEPTED' },
+  });
+  if (updated.count === 0) throw coded(409, 'booking_not_requested');
+  return prisma.booking.findUnique({ where: { id: bookingId }, include: BOOKING_FULL }) as Promise<FullBooking>;
+}
+
+// ACCEPTED -> ONGOING: driver started the trip. Customer tracking UI moves
+// from "driver arriving" to "on trip"; pay stays available.
+// Timer-model OTP handshake (DRIVER bookings only).
+// Start: partner taps "reached customer" -> server mints a start OTP shown
+// IN THE CUSTOMER APP; customer reads it aloud; partner types it in ->
+// timer starts (ACCEPTED -> ONGOING).
+// Stop: customer taps "end trip" -> server mints a stop OTP shown IN THE
+// PARTNER APP; partner reads it aloud; customer types it in -> bill computed
+// from actual elapsed time (ONGOING -> COMPLETED).
+export interface OtpIssued {
+  booking: FullBooking;
+  otp: string;
+  expiresAt: Date;
+}
+
+function assertTimerBooking(b: { type: string } | null): void {
+  if (!b) throw coded(404, 'booking_not_found');
+  if (b.type !== 'DRIVER') throw coded(400, 'timer_only_for_driver');
+}
+
+export async function requestStartOtp(bookingId: string, partnerId: string): Promise<OtpIssued> {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  assertTimerBooking(b);
+  if (b!.partnerId !== partnerId) throw coded(403, 'only_assigned_partner_starts');
+  if (b!.status !== 'ACCEPTED') throw coded(409, 'booking_not_startable');
+  const otp = makeOtp();
+  const booking = (await prisma.booking.update({
+    where: { id: bookingId },
+    data: { startOtp: otp, startOtpExpiresAt: new Date(Date.now() + OTP_TTL_MS) },
+    include: BOOKING_FULL,
+  })) as FullBooking;
+  return { booking, otp, expiresAt: booking.startOtpExpiresAt as Date };
+}
+
+export async function verifyStartOtp(bookingId: string, partnerId: string, otp: string): Promise<FullBooking> {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  assertTimerBooking(b);
+  if (b!.partnerId !== partnerId) throw coded(403, 'only_assigned_partner_starts');
+  if (b!.status !== 'ACCEPTED') throw coded(409, 'booking_not_startable');
+  if (!b!.startOtp || !b!.startOtpExpiresAt || b!.startOtpExpiresAt.getTime() < Date.now() || b!.startOtp !== otp) {
+    throw coded(400, 'invalid_or_expired_otp');
+  }
   return prisma.booking.update({
     where: { id: bookingId },
-    data: { partnerId, status: 'ACCEPTED' },
+    data: { status: 'ONGOING', startedAt: new Date(), startOtp: null, startOtpExpiresAt: null },
+    include: BOOKING_FULL,
+  }) as Promise<FullBooking>;
+}
+
+export async function requestStopOtp(bookingId: string, customerId: string): Promise<OtpIssued> {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  assertTimerBooking(b);
+  if (b!.customerId !== customerId) throw coded(403, 'only_customer_stops');
+  if (b!.status !== 'ONGOING' || !b!.startedAt) throw coded(409, 'booking_not_stoppable');
+  const otp = makeOtp();
+  const booking = (await prisma.booking.update({
+    where: { id: bookingId },
+    data: { endOtp: otp, endOtpExpiresAt: new Date(Date.now() + OTP_TTL_MS) },
+    include: BOOKING_FULL,
+  })) as FullBooking;
+  return { booking, otp, expiresAt: booking.endOtpExpiresAt as Date };
+}
+
+export async function verifyStopOtp(bookingId: string, customerId: string, otp: string): Promise<FullBooking> {
+  const b = await prisma.booking.findUnique({ where: { id: bookingId } });
+  assertTimerBooking(b);
+  if (b!.customerId !== customerId) throw coded(403, 'only_customer_stops');
+  if (b!.status !== 'ONGOING' || !b!.startedAt) throw coded(409, 'booking_not_stoppable');
+  if (!b!.endOtp || !b!.endOtpExpiresAt || b!.endOtpExpiresAt.getTime() < Date.now() || b!.endOtp !== otp) {
+    throw coded(400, 'invalid_or_expired_otp');
+  }
+  const endedAt = new Date();
+  const elapsedSec = Math.max(0, Math.round((endedAt.getTime() - b!.startedAt.getTime()) / 1000));
+  const rate = b!.pricePerHourPaise ?? DRIVER_RATE_PER_HOUR_PAISE;
+  const bill = computeTimerBill(elapsedSec, rate, b!.commissionBps);
+  return prisma.booking.update({
+    where: { id: bookingId },
+    data: {
+      status: 'COMPLETED',
+      endedAt,
+      endOtp: null,
+      endOtpExpiresAt: null,
+      billedMinutes: bill.billedMinutes,
+      amountPaise: bill.amountPaise,
+      platformFeePaise: bill.platformFeePaise,
+      partnerPayoutPaise: bill.partnerPayoutPaise,
+    },
     include: BOOKING_FULL,
   }) as Promise<FullBooking>;
 }
@@ -138,7 +237,9 @@ export async function cancelBooking(bookingId: string, userId: string): Promise<
   const b = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!b) throw coded(404, 'booking_not_found');
   if (b.customerId !== userId) throw coded(403, 'only_customer_cancels');
-  if (b.status !== 'REQUESTED') throw coded(409, 'only_requested_cancellable');
+  // Customer may cancel while waiting (REQUESTED) or after a driver accepted
+  // but before completion. Terminal states stay immutable.
+  if (b.status !== 'REQUESTED' && b.status !== 'ACCEPTED') throw coded(409, 'only_requested_or_accepted_cancellable');
   return prisma.booking.update({
     where: { id: bookingId },
     data: { status: 'CANCELLED' },
@@ -164,6 +265,9 @@ export async function payBooking(bookingId: string, userId: string): Promise<Ful
   if (!b) throw coded(404, 'booking_not_found');
   if (b.customerId !== userId) throw coded(403, 'only_customer_pays');
   if (b.paymentStatus === 'COMPLETED') throw coded(409, 'already_paid');
+  // Pay only makes sense once a driver/host accepted (or the trip is
+  // underway/done). Paying a lonely REQUESTED booking is a client bug.
+  if (b.status !== 'ACCEPTED' && b.status !== 'ONGOING' && b.status !== 'COMPLETED') throw coded(409, 'booking_not_payable_yet');
   return prisma.booking.update({
     where: { id: bookingId },
     data: { paymentStatus: 'COMPLETED' },

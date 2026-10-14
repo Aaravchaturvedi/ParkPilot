@@ -37,6 +37,17 @@ export function registerDispatchHandlers(io: Server, socket: Socket): void {
   const { id, role } = socket.data.user as { id: string; role: string };
   if (role !== 'PARTNER' && role !== 'ADMIN') return;
 
+  // Shared fan-out: booking room (explicit joiners) + both personal rooms.
+  // Personal fallback covers slow mobile joins that land after the update.
+  // OTP fields scrubbed — codes travel only via the dedicated OTP events.
+  const fanOutUpdated = (booking: FullBooking): void => {
+    const { startOtp: _s, startOtpExpiresAt: _se, endOtp: _e, endOtpExpiresAt: _ee, ...safe } = booking;
+    const payload = { booking: safe };
+    io.to(bookingRoom(booking.id)).emit('booking:updated', payload);
+    io.to(userRoom(booking.customerId)).emit('booking:updated', payload);
+    if (booking.partnerId) io.to(userRoom(booking.partnerId)).emit('booking:updated', payload);
+  };
+
   socket.on('booking:accept', async ({ bookingId }: { bookingId?: string } = {}, ack?: Ack) => {
     try {
       if (!bookingId) {
@@ -44,12 +55,22 @@ export function registerDispatchHandlers(io: Server, socket: Socket): void {
         return;
       }
       const booking = await acceptBooking(bookingId, id);
-      io.to(bookingRoom(booking.id)).emit('booking:updated', { booking });
+      // Winner joins the room so ONGOING/COMPLETED updates reach them even
+      // if their REST join raced the accept.
+      await socket.join(bookingRoom(booking.id));
+      fanOutUpdated(booking);
+      // Legacy event kept for dispatch-test + older customers.
       io.to(userRoom(booking.customerId)).emit('booking:accepted', { booking });
       ack?.({ ok: true, booking });
     } catch (e) {
       ack?.({ ok: false, error: (e as Error).message });
     }
+  });
+
+  socket.on('booking:start', async ({ bookingId }: { bookingId?: string } = {}, ack?: Ack) => {
+    // Timer model enforces the OTP handshake: there is no socket shortcut to
+    // ONGOING. Partners verify via POST /bookings/:id/start-verify.
+    ack?.({ ok: false, error: 'use_start_verify_otp' });
   });
 
   socket.on('booking:reject', async ({ bookingId }: { bookingId?: string } = {}, ack?: Ack) => {
@@ -59,6 +80,9 @@ export function registerDispatchHandlers(io: Server, socket: Socket): void {
         ack?.({ ok: false, error: 'booking_not_found' });
         return;
       }
+      // Reject is per-partner dismissal: global status stays REQUESTED so the
+      // remaining online partners can still accept. The rejecting client
+      // filters this id locally (see RequestsScreen dismissed set).
       io.to(userRoom(booking.customerId)).emit('booking:rejected', { bookingId, by: id });
       ack?.({ ok: true });
     } catch {

@@ -1,4 +1,6 @@
 import type { Server, Socket } from 'socket.io';
+import prisma from '../lib/prisma';
+import { BOOKING_FULL, type FullBooking } from '../services/bookings';
 import { getRedis } from '../lib/redis';
 
 const LIVE_KEY = 'drivers:live'; // GEO: lng, lat, driverId
@@ -115,6 +117,24 @@ export function registerLocationHandlers(io: Server, socket: Socket): void {
         return;
       }
       await getRedis().sadd(ONLINE_PARTNERS_KEY, id);
+      // Redeliver open requests missed while offline/restarted: dispatch is
+      // fire-once, so without this a booking created pre-online never appears.
+      // DRIVER bookings are broadcast to every online partner; PARKING
+      // bookings belong to one owner and must be redelivered to that owner.
+      const openDriver = (await prisma.booking.findMany({
+        where: { type: 'DRIVER', status: 'REQUESTED', partnerId: null },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: BOOKING_FULL,
+      })) as FullBooking[];
+      for (const booking of openDriver) socket.emit('booking:request', { booking });
+      const openParking = (await prisma.booking.findMany({
+        where: { type: 'PARKING', status: 'REQUESTED', partnerId: null, space: { ownerId: id } },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: BOOKING_FULL,
+      })) as FullBooking[];
+      for (const booking of openParking) socket.emit('booking:request', { booking });
       ack?.({ ok: true });
     } catch {
       ack?.({ ok: false, error: 'presence_failed' });

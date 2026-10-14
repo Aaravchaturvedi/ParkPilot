@@ -19,6 +19,10 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 export function api(): AxiosInstance {
   if (!client) throw new Error('api_not_initialized_call_initApi_first');
   return client;

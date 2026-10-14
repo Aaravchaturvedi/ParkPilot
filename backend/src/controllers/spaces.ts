@@ -27,5 +27,5 @@ export async function mine(req: Request, res: Response): Promise<void> {
 }
 
 export async function update(req: Request, res: Response): Promise<void> {
-  res.json({ space: await updateSpace(req.user.id, req.params.id, (req.body || {}) as { title?: string; address?: string; pricePerHourPaise?: number; isActive?: boolean }) });
+  res.json({ space: await updateSpace(req.user.id, req.params.id, (req.body || {}) as { title?: string; address?: string; pricePerHourPaise?: number; isActive?: boolean; lat?: number; lng?: number }) });
 }

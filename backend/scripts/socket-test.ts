@@ -54,7 +54,7 @@ interface Tokens {
   console.log('connected:', JSON.stringify(payload));
 
   // 4. booking room join + live update on accept
-  const b = await rest('POST', '/bookings', CT, { type: 'DRIVER', distanceKm: 5 });
+  const b = await rest('POST', '/bookings', CT, { type: 'DRIVER', hours: 1 });
   const bookingId = ((b.json as unknown as { booking: { id: string } }).booking).id;
   const joinAck = await socket.emitWithAck('booking:join', { bookingId });
   console.log('join:', JSON.stringify(joinAck));

@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { verify } from '../lib/tokens';
 import { getRedis } from '../lib/redis';
+import prisma from '../lib/prisma';
 import type { FullBooking } from '../services/bookings';
 import { getBookingForParty } from '../services/bookings';
 import { registerLocationHandlers, ONLINE_PARTNERS_KEY } from './location';
@@ -34,6 +35,12 @@ export function initSockets(httpServer: import('http').Server): Server {
     cors: { origin: '*', methods: ['GET', 'POST'] }, // MVP-open; lock down post-MVP
   });
 
+  // Presence is per-connection (set on partner:online, cleared on disconnect).
+  // A server restart drops every socket without firing disconnect, so the set
+  // must start empty — otherwise ghosts stay "online" forever and get
+  // dispatched bookings they never see (presence-test catch).
+  getRedis().del(ONLINE_PARTNERS_KEY).catch(() => undefined);
+
   io.use((socket, next) => {
     const token = (socket.handshake.auth as { token?: string } | undefined)?.token;
     if (!token) return next(new Error('missing_token'));
@@ -54,6 +61,25 @@ export function initSockets(httpServer: import('http').Server): Server {
     if (isPartner) {
       void socket.join(driverRoom(id));
     }
+
+    // Auto-join live booking rooms so status updates arrive even if the
+    // client's explicit booking:join races the accept/complete. Best-effort:
+    // failures here never break the connection.
+    void (async () => {
+      try {
+        const live = await prisma.booking.findMany({
+          where: {
+            status: { in: ['REQUESTED', 'ACCEPTED', 'ONGOING'] },
+            OR: [{ customerId: id }, { partnerId: id }, { space: { ownerId: id } }],
+          },
+          select: { id: true },
+          take: 20,
+        });
+        for (const b of live) void socket.join(bookingRoom(b.id));
+      } catch {
+        // ignore — explicit booking:join still works
+      }
+    })();
 
     socket.emit('connected', { userId: id, rooms: [userRoom(id), ...(role === 'PARTNER' || role === 'ADMIN' ? [driverRoom(id)] : [])] });
 
@@ -90,7 +116,10 @@ export function emitBooking(io: Server | undefined, booking: FullBooking): void 
   // Booking room (explicit join) AND personal rooms (joined at connect).
   // Personal fallback covers slow/flaky clients whose join lands after
   // the status change — the normal case on mobile networks.
-  const payload = { booking };
+  // OTP fields are scrubbed: codes travel ONLY via booking:start-otp /
+  // booking:stop-otp to the intended recipient's personal room.
+  const { startOtp: _s, startOtpExpiresAt: _se, endOtp: _e, endOtpExpiresAt: _ee, ...safe } = booking;
+  const payload = { booking: safe };
   io.to(bookingRoom(booking.id)).emit('booking:updated', payload);
   io.to(userRoom(booking.customerId)).emit('booking:updated', payload);
   if (booking.partnerId) io.to(userRoom(booking.partnerId)).emit('booking:updated', payload);

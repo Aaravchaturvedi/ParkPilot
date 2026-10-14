@@ -56,6 +56,8 @@ export interface SpacePatch {
   address?: string;
   pricePerHourPaise?: number;
   isActive?: boolean;
+  lat?: number;
+  lng?: number;
 }
 
 export async function updateSpace(ownerId: string, id: string, patch: SpacePatch): Promise<ParkingSpace> {
@@ -70,5 +72,12 @@ export async function updateSpace(ownerId: string, id: string, patch: SpacePatch
     data.pricePerHourPaise = patch.pricePerHourPaise;
   }
   if (patch.isActive !== undefined) data.isActive = Boolean(patch.isActive);
+  if (patch.lat !== undefined || patch.lng !== undefined) {
+    const lat = patch.lat ?? s.lat;
+    const lng = patch.lng ?? s.lng;
+    assertCoords(lat, lng);
+    data.lat = lat;
+    data.lng = lng;
+  }
   return prisma.parkingSpace.update({ where: { id }, data });
 }

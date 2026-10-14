@@ -55,6 +55,11 @@ export interface DriverQuote extends FareSplit {
   ratePerKmPaise: number;
 }
 
+export interface DriverHoursQuote extends FareSplit {
+  hours: number;
+  ratePerHourPaise: number;
+}
+
 export interface ParkingQuote extends FareSplit {
   pricePerHourPaise: number;
   hours: number;
@@ -68,7 +73,23 @@ export interface Booking {
   partnerId: string | null;
   vehicleId: string | null;
   spaceId: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropLat: number | null;
+  dropLng: number | null;
   distanceKm: number | null;
+  // Timer model (DRIVER): estimate at booking, actuals at stop.
+  estimatedHours: number | null;
+  pricePerHourPaise: number | null;
+  // OTP codes are recipient-scoped: startOtp is only ever populated for the
+  // customer, endOtp only for the partner. Everyone else reads null.
+  startOtp: string | null;
+  startOtpExpiresAt: string | null;
+  startedAt: string | null;
+  endOtp: string | null;
+  endOtpExpiresAt: string | null;
+  endedAt: string | null;
+  billedMinutes: number | null;
   amountPaise: number;
   commissionBps: number;
   platformFeePaise: number;
@@ -100,3 +121,43 @@ export const paiseToRupees = (paise: number): string => `₹${(paise / 100).toFi
 
 export const TERMINAL_STATUSES: BookingStatus[] = ['COMPLETED', 'CANCELLED'];
 export const isTerminalStatus = (s: BookingStatus): boolean => TERMINAL_STATUSES.includes(s);
+
+// Haversine great-circle distance in km. Shared by customer (trip-length
+// estimate, space distances) and partner (request proximity sort/filter) so
+// both apps rank "nearest first" with identical math.
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLa = ((bLat - aLat) * Math.PI) / 180;
+  const dLn = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLa / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLn / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+export function formatKm(km: number): string {
+  return km < 10 ? `${Math.round(km * 10) / 10} km` : `${Math.round(km)} km`;
+}
+
+// Timer billing mirror of backend computeTimerBill: per-minute round-up with
+// a first-hour minimum. Clients use it for LIVE running-cost display only —
+// the server recomputes the final bill at stop-verify (source of truth).
+export const TIMER_MIN_BILL_MINUTES = 60;
+
+export function billedMinutesFor(elapsedSec: number): number {
+  return Math.max(TIMER_MIN_BILL_MINUTES, Math.ceil(Math.max(0, elapsedSec) / 60));
+}
+
+export function runningCostPaise(elapsedSec: number, ratePerHourPaise: number): { billedMinutes: number; amountPaise: number } {
+  const billedMinutes = billedMinutesFor(elapsedSec);
+  return { billedMinutes, amountPaise: Math.round((billedMinutes * ratePerHourPaise) / 60) };
+}
+
+export function formatElapsed(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+}

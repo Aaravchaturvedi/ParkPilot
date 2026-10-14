@@ -18,6 +18,13 @@ export async function me(): Promise<{ user: User }> {
   return data;
 }
 
+/** Exchange a saved refresh token for fresh tokens. Does not need auth header. */
+export async function refreshSession(refreshToken: string): Promise<AuthTokens> {
+  const { data } = await api().post('/auth/refresh', { refreshToken });
+  setAccessToken(data.accessToken);
+  return data;
+}
+
 export async function submitKyc(): Promise<{ user: User }> {
   const { data } = await api().patch('/auth/kyc');
   return data;

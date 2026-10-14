@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { Server } from 'socket.io';
 import * as svc from '../services/bookings';
+import type { FullBooking } from '../services/bookings';
 
 import { emitBooking } from '../sockets';
 import { dispatchNewBooking } from '../sockets/dispatch';
@@ -9,22 +10,46 @@ function ioOf(req: Request): Server | undefined {
   return req.app.get('io') as Server | undefined;
 }
 
+// OTPs gate a physical meeting: the start code is ONLY ever readable by the
+// customer, the stop code ONLY by the partner. Every REST booking payload is
+// scrubbed for the viewer, and socket booking payloads carry no OTPs at all
+// (codes travel exclusively via booking:start-otp / booking:stop-otp to the
+// intended recipient's rooms). Without this the partner could pull the start
+// code from GET /bookings/:id without ever reaching the customer.
+type SafeBooking = Omit<FullBooking, 'startOtp' | 'startOtpExpiresAt' | 'endOtp' | 'endOtpExpiresAt'> & {
+  startOtp: string | null;
+  startOtpExpiresAt: Date | null;
+  endOtp: string | null;
+  endOtpExpiresAt: Date | null;
+};
+
+function presentFor(viewerId: string, booking: FullBooking): SafeBooking {
+  return {
+    ...booking,
+    startOtp: viewerId === booking.customerId ? booking.startOtp : null,
+    startOtpExpiresAt: viewerId === booking.customerId ? booking.startOtpExpiresAt : null,
+    endOtp: booking.partnerId !== null && viewerId === booking.partnerId ? booking.endOtp : null,
+    endOtpExpiresAt: booking.partnerId !== null && viewerId === booking.partnerId ? booking.endOtpExpiresAt : null,
+  };
+}
+
 export async function create(req: Request, res: Response): Promise<void> {
-  const { type, distanceKm, vehicleId, spaceId, hours, pickupLat, pickupLng, dropLat, dropLng, commissionBps } = (req.body || {}) as {
+  // One email = one side: partners book through the partner role, not as customers.
+  if (req.user.role !== 'CUSTOMER' && req.user.role !== 'ADMIN') {
+    res.status(403).json({ error: 'only_customers_book' });
+    return;
+  }
+  const { type, spaceId, hours, pickupLat, pickupLng, commissionBps } = (req.body || {}) as {
     type?: string;
-    distanceKm?: number;
-    vehicleId?: string;
     spaceId?: string;
     hours?: number;
     pickupLat?: number;
     pickupLng?: number;
-    dropLat?: number;
-    dropLng?: number;
     commissionBps?: number;
   };
   let booking;
   if (type === 'DRIVER') {
-    booking = await svc.createDriverBooking({ customerId: req.user.id, distanceKm: distanceKm as number, vehicleId, pickupLat, pickupLng, dropLat, dropLng, commissionBps });
+    booking = await svc.createDriverBooking({ customerId: req.user.id, hours: hours as number, pickupLat, pickupLng, commissionBps });
   } else if (type === 'PARKING') {
     booking = await svc.createParkingBooking({ customerId: req.user.id, spaceId: spaceId as string, hours: hours as number, commissionBps });
   } else {
@@ -32,37 +57,82 @@ export async function create(req: Request, res: Response): Promise<void> {
     return;
   }
   const notified = await dispatchNewBooking(ioOf(req), booking);
-  res.status(201).json({ booking, notified });
+  res.status(201).json({ booking: presentFor(req.user.id, booking), notified });
 }
 
 export async function list(req: Request, res: Response): Promise<void> {
-  res.json({ bookings: await svc.getOwnBookings(req.user.id) });
+  const bookings = await svc.getOwnBookings(req.user.id);
+  res.json({ bookings: bookings.map((b) => presentFor(req.user.id, b)) });
 }
 
 export async function get(req: Request, res: Response): Promise<void> {
-  res.json({ booking: await svc.getBookingForParty(req.params.id, req.user.id) });
+  const booking = await svc.getBookingForParty(req.params.id, req.user.id);
+  res.json({ booking: presentFor(req.user.id, booking) });
 }
 
 export async function accept(req: Request, res: Response): Promise<void> {
   const booking = await svc.acceptBooking(req.params.id, req.user.id);
   emitBooking(ioOf(req), booking);
-  res.json({ booking });
+  res.json({ booking: presentFor(req.user.id, booking) });
+}
+
+// Partner reached the customer: mint the start OTP. It is delivered to the
+// CUSTOMER (in-app display via socket + readable via GET), never to the
+// requester — the handshake only works if the two humans meet.
+export async function requestStartOtp(req: Request, res: Response): Promise<void> {
+  const { booking, otp, expiresAt } = await svc.requestStartOtp(req.params.id, req.user.id);
+  const io = ioOf(req);
+  emitBooking(io, booking);
+  if (io) {
+    // Customer's personal room ONLY — never the shared booking room (the
+    // partner sits in it and must not see this code).
+    io.to(`user:${booking.customerId}`).emit('booking:start-otp', { bookingId: booking.id, otp, expiresAt });
+  }
+  // Partner's REST response carries no code — the handshake only works if
+  // the two humans actually meet.
+  res.json({ booking: presentFor(req.user.id, booking), expiresAt });
+}
+
+export async function verifyStartOtp(req: Request, res: Response): Promise<void> {
+  const { otp } = (req.body || {}) as { otp?: string };
+  const booking = await svc.verifyStartOtp(req.params.id, req.user.id, String(otp ?? ''));
+  emitBooking(ioOf(req), booking);
+  res.json({ booking: presentFor(req.user.id, booking) });
+}
+
+// Customer ends the trip: mint the stop OTP for the PARTNER side.
+export async function requestStopOtp(req: Request, res: Response): Promise<void> {
+  const { booking, otp, expiresAt } = await svc.requestStopOtp(req.params.id, req.user.id);
+  const io = ioOf(req);
+  emitBooking(io, booking);
+  if (io && booking.partnerId) {
+    // Partner's personal room ONLY — never the shared booking room.
+    io.to(`user:${booking.partnerId}`).emit('booking:stop-otp', { bookingId: booking.id, otp, expiresAt });
+  }
+  res.json({ booking: presentFor(req.user.id, booking), expiresAt });
+}
+
+export async function verifyStopOtp(req: Request, res: Response): Promise<void> {
+  const { otp } = (req.body || {}) as { otp?: string };
+  const booking = await svc.verifyStopOtp(req.params.id, req.user.id, String(otp ?? ''));
+  emitBooking(ioOf(req), booking);
+  res.json({ booking: presentFor(req.user.id, booking) });
 }
 
 export async function cancel(req: Request, res: Response): Promise<void> {
   const booking = await svc.cancelBooking(req.params.id, req.user.id);
   emitBooking(ioOf(req), booking);
-  res.json({ booking });
+  res.json({ booking: presentFor(req.user.id, booking) });
 }
 
 export async function complete(req: Request, res: Response): Promise<void> {
   const booking = await svc.completeBooking(req.params.id, req.user.id);
   emitBooking(ioOf(req), booking);
-  res.json({ booking });
+  res.json({ booking: presentFor(req.user.id, booking) });
 }
 
 export async function pay(req: Request, res: Response): Promise<void> {
   const booking = await svc.payBooking(req.params.id, req.user.id);
   emitBooking(ioOf(req), booking);
-  res.json({ booking });
+  res.json({ booking: presentFor(req.user.id, booking) });
 }

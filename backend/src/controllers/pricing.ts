@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 
-import { quoteDriverFare, quoteParkingFare } from '../services/pricing';
+import { quoteDriverFare, quoteDriverHours, quoteParkingFare } from '../services/pricing';
 
 // Public: apps show prices before login.
 export async function quote(req: Request, res: Response): Promise<void> {
@@ -15,6 +15,10 @@ export async function quote(req: Request, res: Response): Promise<void> {
   try {
     if (type === 'driver') {
       res.json({ quote: quoteDriverFare(Number(distanceKm), bps) });
+      return;
+    }
+    if (type === 'driver_hours') {
+      res.json({ quote: quoteDriverHours(Number(hours), bps) });
       return;
     }
     if (type === 'parking') {

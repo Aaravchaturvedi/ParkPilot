@@ -26,8 +26,16 @@ declare module 'expo-secure-store' {
   export function deleteItemAsync(key: string): Promise<void>;
 }
 declare module 'expo-location' {
+  export enum Accuracy {
+    Lowest = 1,
+    Low = 2,
+    Balanced = 3,
+    High = 4,
+    Highest = 5,
+    BestForNavigation = 6,
+  }
   export function requestForegroundPermissionsAsync(): Promise<{ status: string }>;
-  export function getCurrentPositionAsync(): Promise<{ coords: { latitude: number; longitude: number } }>;
+  export function getCurrentPositionAsync(options?: { accuracy?: Accuracy }): Promise<{ coords: { latitude: number; longitude: number } }>;
   export function watchPositionAsync(
     options: unknown,
     cb: (loc: { coords: { latitude: number; longitude: number } }) => void,

@@ -1,17 +1,51 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import type { Booking, ParkingQuote, ParkingSpace } from '../../../../packages/types/src';
-import { createBooking, quoteParking } from '../../../../packages/api/src/index';
-import { Button, PriceTag } from '../../../../packages/ui/src';
+import { createBooking, listBookings, payBooking } from '../../../../packages/api/src/index';
+import { quoteParking } from '../../../../packages/api/src/index';
+import { Button, PriceTag, StatusPill } from '../../../../packages/ui/src';
+import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { paiseToRupees } from '../../../../packages/types/src';
 
-export function ParkingScreen({ space, onDone }: { space: ParkingSpace; onDone: () => void }): React.JSX.Element {
+// Parking booking: pick hours -> quote -> REQUESTED -> host accepts -> pay.
+// Mirrors the driver flow. Subscribes to live updates for OUR booking (socket
+// + polling) so the card flips to ACCEPTED the moment the host confirms —
+// without this the screen froze on REQUESTED and looked "not confirming".
+export function ParkingScreen({ space, apiURL, token, onDone }: { space: ParkingSpace; apiURL: string; token: string; onDone: () => void }): React.JSX.Element {
   const [hours, setHours] = useState(2);
   const [quote, setQuote] = useState<ParkingQuote | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Live status for our booking only.
+  useEffect(() => {
+    if (!booking) return;
+    const s = getSocket() ?? ensureSocket(apiURL, token);
+    s.emit('booking:join', { bookingId: booking.id });
+    const onUpdate = (evt: { booking: Booking }): void => {
+      if (evt.booking.id === booking.id) setBooking(evt.booking);
+    };
+    s.on('booking:updated', onUpdate);
+    const poll = setInterval(() => {
+      listBookings()
+        .then(({ bookings }) => {
+          const b = bookings.find((x) => x.id === booking.id);
+          if (b) setBooking(b);
+        })
+        .catch(() => undefined);
+    }, 8000);
+    return () => {
+      clearInterval(poll);
+      s.off('booking:updated', onUpdate);
+      s.emit('booking:leave', { bookingId: booking.id });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiURL, token, booking?.id]);
 
   const fetchQuote = async (): Promise<void> => {
+    setError(null);
     try {
       const { quote: q } = await quoteParking(space.pricePerHourPaise, hours);
       setQuote(q);
@@ -21,19 +55,55 @@ export function ParkingScreen({ space, onDone }: { space: ParkingSpace; onDone: 
   };
 
   const book = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
     try {
       const { booking: b } = await createBooking({ type: 'PARKING', spaceId: space.id, hours });
       setBooking(b);
-    } catch {
-      setError('Booking failed.');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(
+        msg === 'only_customers_book'
+          ? 'Partners cannot book parking — use a customer account.'
+          : msg === 'space_not_available'
+            ? 'This space is paused by its host — pick another one.'
+            : 'Booking failed.',
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
+  const pay = async (): Promise<void> => {
+    if (!booking) return;
+    setBusy(true);
+    try {
+      const { booking: b } = await payBooking(booking.id);
+      setBooking(b);
+    } catch {
+      setError('Payment needs the host to accept first — wait, then retry.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canPay = booking != null && booking.paymentStatus === 'PENDING' && (booking.status === 'ACCEPTED' || booking.status === 'ONGOING' || booking.status === 'COMPLETED');
+
   return (
-    <View style={styles.root}>
+    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{space.title}</Text>
       <Text style={styles.dim}>
         {space.address} · {paiseToRupees(space.pricePerHourPaise)}/hr
+      </Text>
+      {/* The selected park location on a real map — what you picked is what you get. */}
+      <MapView
+        initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+        style={styles.map}
+      >
+        <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} />
+      </MapView>
+      <Text style={styles.dim}>
+        Pinned at {space.lat.toFixed(4)}, {space.lng.toFixed(4)}
       </Text>
       <View style={styles.row}>
         <Button title="−" onPress={() => setHours((h) => Math.max(1, h - 1))} />
@@ -44,23 +114,37 @@ export function ParkingScreen({ space, onDone }: { space: ParkingSpace; onDone: 
       {quote ? (
         <View style={styles.card}>
           <PriceTag paise={quote.amountPaise} label="Total" />
-          <Button title="Confirm parking" onPress={book} />
+          <Text style={styles.dim}>
+            Platform {quote.commissionBps / 100}% · host gets {(quote.partnerPayoutPaise / 100).toFixed(2)}
+          </Text>
+          <Button title={busy ? 'Booking…' : 'Confirm parking'} onPress={book} disabled={busy} />
         </View>
       ) : null}
-      {booking ? <Text style={styles.status}>Booked · {booking.status}</Text> : null}
+      {booking ? (
+        <View style={styles.card}>
+          <StatusPill status={booking.status} />
+          <Text style={styles.dim}>
+            {booking.id.slice(0, 8)} · payment {booking.paymentStatus}
+          </Text>
+          {booking.status === 'REQUESTED' ? <Text style={styles.dim}>Sent to the host — this card updates live when they accept.</Text> : null}
+          {booking.status === 'ACCEPTED' ? <Text style={styles.dim}>Host confirmed — you can pay now.</Text> : null}
+          {canPay ? <Button title={busy ? 'Paying…' : 'Pay now (mock)'} onPress={pay} disabled={busy} /> : null}
+        </View>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Back to map" onPress={onDone} />
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 16, gap: 12 },
+  root: { flex: 1 },
+  content: { padding: 16, gap: 12 },
   title: { fontSize: 20, fontWeight: '700' },
+  map: { height: 200 },
   dim: { color: '#6b7280' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   hours: { fontSize: 18, fontWeight: '600' },
   card: { gap: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12 },
-  status: { fontWeight: '600' },
   error: { color: '#dc2626' },
 });

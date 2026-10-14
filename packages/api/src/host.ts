@@ -11,7 +11,7 @@ export async function createSpace(input: { title: string; address: string; lat: 
   return data;
 }
 
-export async function updateSpace(id: string, patch: { isActive?: boolean; pricePerHourPaise?: number }): Promise<{ space: ParkingSpace }> {
+export async function updateSpace(id: string, patch: { isActive?: boolean; pricePerHourPaise?: number; lat?: number; lng?: number }): Promise<{ space: ParkingSpace }> {
   const { data } = await api().patch(`/spaces/${id}`, patch);
   return data;
 }
