@@ -5,7 +5,7 @@ import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { ParkingSpace } from '../../../../packages/types/src';
 import { nearbySpaces } from '../../../../packages/api/src/index';
-import { Button, PriceTag } from '../../../../packages/ui/src';
+import { Button, PriceTag, SegmentedControl } from '../../../../packages/ui/src';
 
 type Space = ParkingSpace & { distanceKm: number };
 
@@ -107,13 +107,15 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
         </Text>
         {center ? <Text style={styles.hint}>Search center {center.latitude.toFixed(3)}, {center.longitude.toFixed(3)} · drag the map, then Search this area.</Text> : null}
         {spaces[0] ? <PriceTag paise={spaces[0].pricePerHourPaise} label="from /hr" /> : null}
-        <View style={styles.radiusRow}>
-          {RADII.map((r) => (
-            <Pressable key={r} onPress={() => { setRadius(r); const c = center ?? { latitude: region.latitude, longitude: region.longitude }; void fetchFor(c.latitude, c.longitude, r); }} style={r === radius ? styles.radiusOn : styles.radiusOff}>
-              <Text style={r === radius ? styles.radiusTextOn : styles.radiusText}>{r}km</Text>
-            </Pressable>
-          ))}
-        </View>
+        <SegmentedControl
+          options={RADII.map((r) => ({ value: r, label: `${r}km` }))}
+          value={radius}
+          onChange={(r) => {
+            setRadius(r);
+            const c = center ?? { latitude: region.latitude, longitude: region.longitude };
+            void fetchFor(c.latitude, c.longitude, r);
+          }}
+        />
         <Button title="Search this area (map center)" onPress={() => fetchFor(region.latitude, region.longitude, radius)} disabled={loading} />
         <Button title="Use my location" onPress={() => locateAndFetch()} disabled={loading} />
         {spaces.length === 0 && !loading ? (
@@ -138,11 +140,6 @@ const styles = StyleSheet.create({
   bar: { padding: 12, gap: 8 },
   count: { fontSize: 16, fontWeight: '600' },
   hint: { color: '#6b7280', fontSize: 12 },
-  radiusRow: { flexDirection: 'row', gap: 8 },
-  radiusOff: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  radiusOn: { borderWidth: 1, borderColor: '#111827', backgroundColor: '#111827', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  radiusText: { color: '#6b7280', fontWeight: '600' },
-  radiusTextOn: { color: '#fff', fontWeight: '700' },
   row: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, gap: 4 },
   name: { fontSize: 16, fontWeight: '600' },
   error: { color: '#dc2626' },

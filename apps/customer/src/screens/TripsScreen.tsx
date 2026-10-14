@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import type { Booking } from '../../../../packages/types/src';
 import { cancelBooking, listBookings, payBooking } from '../../../../packages/api/src/index';
-import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
+import { Button, Card, EmptyState, PriceTag, StatusPill } from '../../../../packages/ui/src';
 import { getSocket, ensureSocket } from '../../../../packages/mobile/src/socket';
 
 // Customer booking history. This is the safety net that makes tab switching
@@ -133,7 +133,9 @@ export function TripsScreen({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refresh(false)} />}
     >
       <Text style={styles.title}>My trips ({bookings.length})</Text>
-      {live.length === 0 && past.length === 0 ? <Text style={styles.dim}>No trips yet — book a ride or parking.</Text> : null}
+      {live.length === 0 && past.length === 0 ? (
+        <EmptyState title="No trips yet" hint="Book a driver by the hour or grab a parking spot — everything lands here." />
+      ) : null}
       {live.length > 0 ? <Text style={styles.section}>Active</Text> : null}
       {live.map(renderRow)}
       {past.length > 0 ? <Text style={styles.section}>History</Text> : null}

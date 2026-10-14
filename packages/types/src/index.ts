@@ -161,3 +161,34 @@ export function formatElapsed(totalSec: number): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
+
+export interface TripSummary {
+  total: number;
+  active: number;
+  completed: number;
+  asCustomerSpentPaise: number;
+  asPartnerEarnedPaise: number;
+  asPartnerPendingPaise: number;
+}
+
+// Profile-screen rollup over the viewer's own ledger (mirrors the wallet
+// query so profile earnings always agree with the Wallet tab).
+export function summarizeBookings(bookings: Booking[], userId: string): TripSummary {
+  let active = 0;
+  let completed = 0;
+  let asCustomerSpentPaise = 0;
+  let asPartnerEarnedPaise = 0;
+  let asPartnerPendingPaise = 0;
+  for (const b of bookings) {
+    if (b.status === 'REQUESTED' || b.status === 'ACCEPTED' || b.status === 'ONGOING') active += 1;
+    if (b.status === 'COMPLETED') completed += 1;
+    if (b.customerId === userId && b.status === 'COMPLETED' && b.paymentStatus === 'COMPLETED') {
+      asCustomerSpentPaise += b.amountPaise;
+    }
+    if (b.partnerId === userId && b.status === 'COMPLETED') asPartnerEarnedPaise += b.partnerPayoutPaise;
+    if (b.partnerId === userId && (b.status === 'ACCEPTED' || b.status === 'ONGOING')) {
+      asPartnerPendingPaise += b.partnerPayoutPaise;
+    }
+  }
+  return { total: bookings.length, active, completed, asCustomerSpentPaise, asPartnerEarnedPaise, asPartnerPendingPaise };
+}

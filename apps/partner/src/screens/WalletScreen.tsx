@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import type { Wallet } from '../../../../packages/types/src';
 import { wallet } from '../../../../packages/api/src/index';
-import { Button, Card, PriceTag } from '../../../../packages/ui/src';
+import { Button, Card, PriceTag, SkeletonBlock } from '../../../../packages/ui/src';
 
 export function WalletScreen({ active = true }: { active?: boolean }): React.JSX.Element {
   const [w, setW] = useState<Wallet | null>(null);
@@ -45,7 +45,7 @@ export function WalletScreen({ active = true }: { active?: boolean }): React.JSX
           <Text style={styles.dim}>Payout every 3–4 days via UPI/NEFT (mock).</Text>
         </Card>
       ) : !error ? (
-        <Text style={styles.dim}>Loading…</Text>
+        <SkeletonBlock height={120} />
       ) : null}
       <Button title="Refresh" onPress={() => load(false)} disabled={loading} />
       {error ? <Text style={styles.error}>{error}</Text> : null}

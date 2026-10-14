@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
-import { billedMinutesFor, formatElapsed, runningCostPaise } from '../../../../packages/types/src';
+import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
 import { cancelBooking, listBookings, payBooking, requestStopOtp, verifyStopOtp } from '../../../../packages/api/src/index';
-import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
+import { Button, Card, OtpInput, PriceTag, StatusPill, FadeIn } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 interface DriverPing {
@@ -31,6 +31,7 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   const [pings, setPings] = useState(0);
   const [startOtp, setStartOtp] = useState<string | null>(null);
   const [stopCode, setStopCode] = useState('');
+  const [otpError, setOtpError] = useState(false);
   const [stopSent, setStopSent] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
@@ -174,10 +175,12 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   const confirmEnd = async (): Promise<void> => {
     if (stopCode.trim().length !== 4) {
       setError('Enter the 4-digit code your driver gives you.');
+      setOtpError(true);
       return;
     }
     setBusy(true);
     setError(null);
+    setOtpError(false);
     try {
       const { booking: b } = await verifyStopOtp(bookingId, stopCode.trim());
       setBooking(b);
@@ -185,12 +188,14 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
       setStopCode('');
     } catch {
       setError('Wrong or expired code — ask your driver to read it again.');
+      setOtpError(true);
     } finally {
       setBusy(false);
     }
   };
 
   return (
+    <FadeIn style={styles.fade}>
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Trip {bookingId.slice(0, 8)}</Text>
       {status ? <StatusPill status={status} /> : <Text>Loading…</Text>}
@@ -222,7 +227,7 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
           ) : (
             <>
               <Text style={styles.dim}>Stop code sent to your driver — ask them to read the 4-digit code back, then confirm:</Text>
-              <TextInput style={styles.input} placeholder="4-digit code" keyboardType="numeric" maxLength={4} value={stopCode} onChangeText={setStopCode} />
+              <OtpInput value={stopCode} onChange={(v) => { setStopCode(v); setOtpError(false); }} error={otpError} label="Driver's code" />
               <Button title={busy ? 'Confirming…' : 'Confirm end & see bill'} onPress={confirmEnd} disabled={busy} />
             </>
           )}
@@ -241,17 +246,18 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Back to trips" onPress={onDone} />
     </ScrollView>
+    </FadeIn>
   );
 }
 
 const styles = StyleSheet.create({
+  fade: { flex: 1 },
   root: { flex: 1 },
   content: { padding: 16, gap: 12 },
   title: { fontSize: 20, fontWeight: '700' },
   heading: { fontSize: 16, fontWeight: '700' },
   otp: { fontSize: 44, fontWeight: '800', textAlign: 'center', letterSpacing: 8 },
   timer: { fontSize: 40, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, padding: 12, fontSize: 20, textAlign: 'center', letterSpacing: 4 },
   dim: { color: '#6b7280' },
   error: { color: '#dc2626' },
 });

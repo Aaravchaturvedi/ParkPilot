@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
 import { completeBooking, listBookings, requestStartOtp, verifyStartOtp } from '../../../../packages/api/src/index';
-import { Button, Card, StatusPill } from '../../../../packages/ui/src';
+import { Button, Card, OtpInput, StatusPill } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 function sock(apiURL: string, token: string): ReturnType<typeof ensureSocket> {
@@ -36,6 +36,7 @@ export function RideScreen({
   const [broadcasting, setBroadcasting] = useState(false);
   const [points, setPoints] = useState(0);
   const [otpIn, setOtpIn] = useState('');
+  const [otpError, setOtpError] = useState(false);
   const [startSent, setStartSent] = useState(false);
   const [stopOtp, setStopOtp] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -153,10 +154,12 @@ export function RideScreen({
   const verifyStart = async (): Promise<void> => {
     if (otpIn.trim().length !== 4) {
       setError('Enter the 4-digit code your customer reads to you.');
+      setOtpError(true);
       return;
     }
     setBusy(true);
     setError(null);
+    setOtpError(false);
     try {
       const { booking: b } = await verifyStartOtp(bookingId, otpIn.trim());
       setBooking(b);
@@ -164,6 +167,7 @@ export function RideScreen({
       setOtpIn('');
     } catch {
       setError('Wrong or expired code — ask the customer to read it again (resend if needed).');
+      setOtpError(true);
     } finally {
       setBusy(false);
     }
@@ -214,7 +218,7 @@ export function RideScreen({
           ) : (
             <>
               <Text style={styles.dim}>Code sent to the customer's phone — ask them to read the 4-digit code, then verify:</Text>
-              <TextInput style={styles.input} placeholder="4-digit code" keyboardType="numeric" maxLength={4} value={otpIn} onChangeText={setOtpIn} />
+              <OtpInput value={otpIn} onChange={(v) => { setOtpIn(v); setOtpError(false); }} error={otpError} label="Customer's code" />
               <Button title={busy ? 'Verifying…' : 'Verify & start timer'} onPress={verifyStart} disabled={busy} />
               <Button title="Resend code" onPress={sendStartCode} disabled={busy} />
             </>
@@ -266,6 +270,5 @@ const styles = StyleSheet.create({
   dim: { color: '#6b7280' },
   timer: { fontSize: 40, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
   otp: { fontSize: 44, fontWeight: '800', textAlign: 'center', letterSpacing: 8 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, padding: 12, fontSize: 20, textAlign: 'center', letterSpacing: 4 },
   error: { color: '#dc2626' },
 });

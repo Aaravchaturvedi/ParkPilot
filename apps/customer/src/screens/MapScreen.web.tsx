@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import type { ParkingSpace } from '../../../../packages/types/src';
 import { nearbySpaces } from '../../../../packages/api/src/index';
-import { Button, PriceTag } from '../../../../packages/ui/src';
+import { Button, PriceTag, SegmentedControl } from '../../../../packages/ui/src';
 
 // Web fallback (Metro resolves *.web.tsx on web): maps have no web build,
 // so web testers pick a space from a list. Native apps use MapScreen.tsx.
@@ -36,13 +36,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Nearby spaces (web preview — no map)</Text>
-      <View style={styles.radiusRow}>
-        {RADII.map((r) => (
-          <Pressable key={r} onPress={() => setRadius(r)} style={r === radius ? styles.radiusOn : styles.radiusOff}>
-            <Text style={r === radius ? styles.radiusTextOn : styles.radiusText}>{r}km</Text>
-          </Pressable>
-        ))}
-      </View>
+      <SegmentedControl options={RADII.map((r) => ({ value: r, label: `${r}km` }))} value={radius} onChange={setRadius} />
       <Button title="Refresh" onPress={() => load(radius)} />
       {spaces.map((s) => (
         <Pressable key={s.id} style={styles.row} onPress={() => onBookParking(s)}>
@@ -59,11 +53,6 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
 const styles = StyleSheet.create({
   root: { flex: 1, padding: 16, gap: 8 },
   title: { fontSize: 18, fontWeight: '700' },
-  radiusRow: { flexDirection: 'row', gap: 8 },
-  radiusOff: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  radiusOn: { borderWidth: 1, borderColor: '#111827', backgroundColor: '#111827', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  radiusText: { color: '#6b7280', fontWeight: '600' },
-  radiusTextOn: { color: '#fff', fontWeight: '700' },
   row: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, gap: 4 },
   name: { fontSize: 16, fontWeight: '600' },
   error: { color: '#dc2626' },

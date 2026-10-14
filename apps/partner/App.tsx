@@ -10,12 +10,14 @@ import { RequestsScreen, type Incoming } from './src/screens/RequestsScreen';
 import { RideScreen } from './src/screens/RideScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
 import { HostScreen } from './src/screens/HostScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
+import { TabBar } from '../../packages/ui/src';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://valves-facing-log-eternal.trycloudflare.com';
+const API_URL = 'https://raleigh-indiana-grammar-achievement.trycloudflare.com';
 
-type Tab = 'requests' | 'ride' | 'wallet' | 'host' | 'kyc';
+type Tab = 'requests' | 'ride' | 'wallet' | 'host' | 'kyc' | 'you';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout, refreshUser } = useSession();
@@ -218,27 +220,22 @@ function Shell(): React.JSX.Element {
             }}
           />
         </View>
+        <View style={tab === 'you' ? styles.visible : styles.hidden}>
+          <ProfileScreen online={online} onSignOut={signOut} />
+        </View>
       </View>
-      <View style={styles.tabs}>
-        <Text onPress={() => setTab('requests')} style={tab === 'requests' ? styles.tabOn : styles.tab}>
-          Requests{incoming.length > 0 ? ` (${incoming.length})` : ''}
-        </Text>
-        <Text onPress={() => setTab('ride')} style={tab === 'ride' ? styles.tabOn : styles.tab}>
-          Ride
-        </Text>
-        <Text onPress={() => setTab('host')} style={tab === 'host' ? styles.tabOn : styles.tab}>
-          Spaces
-        </Text>
-        <Text onPress={() => setTab('wallet')} style={tab === 'wallet' ? styles.tabOn : styles.tab}>
-          Wallet
-        </Text>
-        <Text onPress={() => setTab('kyc')} style={tab === 'kyc' ? styles.tabOn : styles.tab}>
-          KYC
-        </Text>
-        <Text onPress={signOut} style={styles.tab}>
-          Out
-        </Text>
-      </View>
+      <TabBar
+        items={[
+          { key: 'requests', label: 'Requests', badge: incoming.length },
+          { key: 'ride', label: 'Ride' },
+          { key: 'host', label: 'Spaces' },
+          { key: 'wallet', label: 'Wallet' },
+          { key: 'kyc', label: 'KYC' },
+          { key: 'you', label: 'You' },
+        ]}
+        activeKey={tab}
+        onPress={(k) => setTab(k as Tab)}
+      />
       <StatusBar />
     </View>
   );
@@ -261,8 +258,5 @@ const styles = StyleSheet.create({
   visible: { flex: 1 },
   hidden: { flex: 1, display: 'none' },
   dim: { color: '#6b7280', textAlign: 'center', paddingHorizontal: 24 },
-  tabs: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderTopWidth: 1, borderColor: '#e5e7eb' },
-  tab: { color: '#6b7280', fontWeight: '600' },
-  tabOn: { color: '#111827', fontWeight: '700' },
   link: { color: '#2563eb', textAlign: 'center', padding: 12 },
 });

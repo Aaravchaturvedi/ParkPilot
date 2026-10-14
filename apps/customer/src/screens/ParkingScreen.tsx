@@ -5,7 +5,7 @@ import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import type { Booking, ParkingQuote, ParkingSpace } from '../../../../packages/types/src';
 import { createBooking, listBookings, payBooking } from '../../../../packages/api/src/index';
 import { quoteParking } from '../../../../packages/api/src/index';
-import { Button, PriceTag, StatusPill } from '../../../../packages/ui/src';
+import { Button, PriceTag, StatusPill, FadeIn } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { paiseToRupees } from '../../../../packages/types/src';
 
@@ -91,6 +91,7 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
   const canPay = booking != null && booking.paymentStatus === 'PENDING' && (booking.status === 'ACCEPTED' || booking.status === 'ONGOING' || booking.status === 'COMPLETED');
 
   return (
+    <FadeIn style={styles.fade}>
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{space.title}</Text>
       <Text style={styles.dim}>
@@ -135,10 +136,12 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Back to map" onPress={onDone} />
     </ScrollView>
+    </FadeIn>
   );
 }
 
 const styles = StyleSheet.create({
+  fade: { flex: 1 },
   root: { flex: 1 },
   content: { padding: 16, gap: 12 },
   title: { fontSize: 20, fontWeight: '700' },

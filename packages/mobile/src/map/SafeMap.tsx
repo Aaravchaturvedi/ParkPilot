@@ -4,6 +4,7 @@
 // tiles still aren't ready after 8s, the exact two things to check.
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import Constants from 'expo-constants';
 import MapView from 'react-native-maps';
 
 export interface SafeMapRegion {
@@ -32,6 +33,18 @@ export function SafeMapView({ initialRegion, style, children, onRegionChangeComp
     return () => clearTimeout(t);
   }, []);
 
+  // Expo Go ships no native maps module: render a graceful fallback instead
+  // of a native crash, so the whole app (booking, OTP, timer, wallet) still
+  // runs there. Real tiles need a dev build (docs/MAPS_SETUP.md).
+  if (isExpoGo()) {
+    return (
+      <View style={[styles.wrap, style, styles.goFallback]}>
+        <Text style={styles.goTitle}>Map preview unavailable in Expo Go</Text>
+        <Text style={styles.goHint}>Everything else works — use the list below, or GPS pinning. For real map tiles, open this project in a dev build (`npx expo run:android`).</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.wrap, style]}>
       <MapView
@@ -59,6 +72,14 @@ export function SafeMapView({ initialRegion, style, children, onRegionChangeComp
   );
 }
 
+function isExpoGo(): boolean {
+  try {
+    return (Constants as unknown as { appOwnership?: string } | null)?.appOwnership === 'expo';
+  } catch {
+    return false;
+  }
+}
+
 const styles = StyleSheet.create({
   wrap: { overflow: 'hidden' },
   map: { flex: 1 },
@@ -66,4 +87,7 @@ const styles = StyleSheet.create({
   veilText: { color: '#6b7280' },
   hint: { padding: 8, backgroundColor: '#fef3c7' },
   hintText: { color: '#92400e', fontSize: 12 },
+  goFallback: { alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#eef2ff', padding: 16 },
+  goTitle: { fontWeight: '800', color: '#4338ca', textAlign: 'center' },
+  goHint: { color: '#6b7280', fontSize: 12, textAlign: 'center' },
 });

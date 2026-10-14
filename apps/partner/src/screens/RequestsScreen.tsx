@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatKm, haversineKm } from '../../../../packages/types/src';
-import { Button, Card, StatusPill } from '../../../../packages/ui/src';
+import { Button, Card, EmptyState, SegmentedControl, StatusPill } from '../../../../packages/ui/src';
 import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { acceptBooking as restAccept } from '../../../../packages/api/src/index';
 
@@ -213,16 +213,12 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
       ) : (
         <Text style={styles.dim}>{locNote ?? 'Reading your GPS for distances…'}</Text>
       )}
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
-          <Pressable key={f.label} onPress={() => setMaxKm(f.km)} style={maxKm === f.km ? styles.filterOn : styles.filterOff}>
-            <Text style={maxKm === f.km ? styles.filterTextOn : styles.filterText}>{f.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <SegmentedControl options={FILTERS.map((f) => ({ value: f.label, label: f.label }))} value={FILTERS.find((f) => f.km === maxKm)?.label ?? 'All'} onChange={(label) => setMaxKm(FILTERS.find((f) => f.label === label)?.km ?? Infinity)} />
       {online && visible.length === 0 && incoming.length > 0 ? <Text style={styles.dim}>All {incoming.length} request(s) are outside this distance filter — widen it.</Text> : null}
-      {online && incoming.length === 0 ? <Text style={styles.dim}>No requests yet. Stay online — new bookings pop up here automatically.</Text> : null}
-      {!online && incoming.length === 0 ? <Text style={styles.dim}>Inbox is empty.</Text> : null}
+      {online && incoming.length === 0 ? (
+        <EmptyState title="No requests yet" hint="Stay online — new bookings pop up here automatically, nearest first." />
+      ) : null}
+      {!online && incoming.length === 0 ? <EmptyState title="You're offline" hint="Go online to receive ride requests." /> : null}
       {visible.map(({ booking, at, kmAway }) => {
         const pickup = pickupOf(booking);
         const isOpen = expanded === booking.id;
@@ -287,11 +283,6 @@ const styles = StyleSheet.create({
   away: { fontSize: 15, fontWeight: '700', color: '#111827' },
   dim: { color: '#6b7280' },
   row: { flexDirection: 'row', gap: 12 },
-  filterRow: { flexDirection: 'row', gap: 8 },
-  filterOff: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  filterOn: { borderWidth: 1, borderColor: '#111827', backgroundColor: '#111827', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  filterText: { color: '#6b7280', fontWeight: '600' },
-  filterTextOn: { color: '#fff', fontWeight: '700' },
   mapWrap: { gap: 8 },
   map: { height: 180 },
   error: { color: '#dc2626' },

@@ -8,13 +8,15 @@ import { BookRideScreen } from './src/screens/BookRideScreen';
 import { ParkingScreen } from './src/screens/ParkingScreen';
 import { TrackingScreen } from './src/screens/TrackingScreen';
 import { TripsScreen } from './src/screens/TripsScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
+import { TabBar } from '../../packages/ui/src';
 import type { Booking, ParkingSpace } from '../../packages/types/src';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://valves-facing-log-eternal.trycloudflare.com';
+const API_URL = 'https://raleigh-indiana-grammar-achievement.trycloudflare.com';
 
-type Tab = 'map' | 'ride' | 'trips';
+type Tab = 'map' | 'ride' | 'trips' | 'you';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
@@ -122,22 +124,21 @@ function Shell(): React.JSX.Element {
           <View style={tab === 'trips' ? styles.tabVisible : styles.tabHidden}>
             <TripsScreen active={tab === 'trips'} lastUpdate={lastUpdate} onTrack={(id) => setTrackingId(id)} apiURL={API_URL} token={token} />
           </View>
+          <View style={tab === 'you' ? styles.tabVisible : styles.tabHidden}>
+            <ProfileScreen onSignOut={signOut} />
+          </View>
         </View>
       )}
-      <View style={styles.tabs}>
-        <Text onPress={() => goTab('map')} style={!showingOverlay && tab === 'map' ? styles.tabOn : styles.tab}>
-          Park
-        </Text>
-        <Text onPress={() => goTab('ride')} style={!showingOverlay && tab === 'ride' ? styles.tabOn : styles.tab}>
-          Ride
-        </Text>
-        <Text onPress={() => goTab('trips')} style={!showingOverlay && tab === 'trips' ? styles.tabOn : styles.tab}>
-          Trips
-        </Text>
-        <Text onPress={signOut} style={styles.tab}>
-          Out
-        </Text>
-      </View>
+      <TabBar
+        items={[
+          { key: 'map', label: 'Park' },
+          { key: 'ride', label: 'Ride' },
+          { key: 'trips', label: 'Trips' },
+          { key: 'you', label: 'You' },
+        ]}
+        activeKey={showingOverlay ? '' : tab}
+        onPress={(k) => goTab(k as Tab)}
+      />
       <StatusBar />
     </View>
   );
@@ -157,9 +158,6 @@ const styles = StyleSheet.create({
   tabHost: { flex: 1 },
   tabVisible: { flex: 1 },
   tabHidden: { flex: 1, display: 'none' },
-  tabs: { flexDirection: 'row', justifyContent: 'space-around', padding: 12, borderTopWidth: 1, borderColor: '#e5e7eb' },
-  tab: { color: '#6b7280', fontWeight: '600' },
-  tabOn: { color: '#111827', fontWeight: '700' },
   title: { fontSize: 22, fontWeight: '700' },
   link: { color: '#2563eb', textAlign: 'center', padding: 12 },
 });
