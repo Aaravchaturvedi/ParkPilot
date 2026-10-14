@@ -18,15 +18,16 @@ Real-time dispatch, live GPS tracking, and mock payments — in one TypeScript m
 1. [What it does](#1-what-it-does)
 2. [Tech stack & why](#2-tech-stack--why)
 3. [Architecture](#3-architecture)
-4. [Monorepo file structure](#4-monorepo-file-structure)
-5. [Domain model & booking lifecycle](#5-domain-model--booking-lifecycle)
-6. [Real-time protocol (Socket.io)](#6-real-time-protocol-socketio)
-7. [REST API reference](#7-rest-api-reference)
-8. [Getting started](#8-getting-started)
-9. [Production gaps & roadmap](#9-production-gaps--roadmap)
-10. [Testing & verification](#10-testing--verification)
-11. [Configuration reference](#11-configuration-reference)
-12. [Troubleshooting](#12-troubleshooting)
+4. [Runtime topology: how it runs, why containers, when to go managed](#4-runtime-topology-how-it-runs-why-containers-when-to-go-managed)
+5. [Monorepo file structure](#5-monorepo-file-structure)
+6. [Domain model & booking lifecycle](#6-domain-model--booking-lifecycle)
+7. [Real-time protocol (Socket.io)](#7-real-time-protocol-socketio)
+8. [REST API reference](#8-rest-api-reference)
+9. [Getting started](#9-getting-started)
+10. [Production gaps & roadmap](#10-production-gaps--roadmap)
+11. [Testing & verification](#11-testing--verification)
+12. [Configuration reference](#12-configuration-reference)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
@@ -115,7 +116,76 @@ Key invariants (enforced, tested):
 
 ---
 
-## 4. Monorepo file structure
+## 4. Runtime topology: how it runs, why containers, when to go managed
+
+### How it runs today (dev)
+
+```
+Laptop                                    Phones (Expo Go / dev builds)
+─────────────────────────────             ─────────────────────────────
+docker compose
+ ├─ postgres:16  (:5432, vol pgdata)
+ ├─ redis:7      (:6379, vol redisdata)
+ └─ backend      (:4000, Node 20, migrate-on-boot)
+        ▲
+        │ cloudflared tunnel (public URL → localhost:4000)
+        ▼
+Metro ×2 (:8081 customer, :8082 partner) ──JS bundle──▶ Expo Go / dev builds
+```
+
+- Everything stateful lives in Compose with named volumes, so restarts keep data
+  and `docker compose down -v` gives a byte-clean rebuild for regression runs.
+- Phones reach the backend through the tunnel URL in `API_URL`; on the same LAN you
+  can use `http://<lan-ip>:4000` instead and skip the tunnel entirely.
+- The backend container runs `prisma migrate deploy` on boot, so a fresh volume
+  self-creates all tables — cloning the repo needs no manual DB setup.
+
+### Why Postgres / Redis / backend run as Docker images
+
+1. **Reproducibility over installation.** Pinned `postgres:16-alpine`, `redis:7-alpine`,
+   `node:20-slim` behave identically on every machine. No host version clashes
+   (e.g. a system Postgres 14 fighting the project's 16), no setup docs to follow.
+2. **Zero external dependencies.** No accounts, cards, or free-tier clocks. Works fully
+   offline on LAN, which is exactly how two-phone field tests run.
+3. **Latency where it matters.** GPS writes + GEO dispatch reads stay on localhost
+   (measured p95 ~2–3 ms). A cloud database would add tunnel + internet hops to every
+   location ping and every dispatch query.
+4. **Cost.** $0, unlimited. Managed free tiers would meter exactly our hottest paths
+   (Neon compute hours, Upstash per-command billing vs. a 0.5 Hz GPS firehose).
+5. **Test parity.** The `backend/scripts/*` regression suite runs against this same
+   Compose stack, so green locally means green in any identical environment.
+6. **Backend image specifics.** Debian-slim, not Alpine — Prisma 5 engines need
+   OpenSSL 3 (`libssl.so.3`), which musl/Alpine images don't satisfy. `tsx watch`
+   for dev, `tsc` build for the shipped container.
+
+### Why Prisma (not raw SQL / Knex / Drizzle)
+
+The schema is the contract: `prisma/schema.prisma` generates a typed client, so a
+renamed column breaks the build instead of a phone in the field. Migrations are
+versioned files (`backend/prisma/migrations/*`, incl. `driver_timer_otp`), applied
+automatically on boot. Raw SQL gives up all of this for no MVP benefit.
+
+### Why not Neon / Upstash / RDS *yet* — and when to switch
+
+Managed Postgres (Neon, RDS, Supabase) and managed Redis (Upstash, ElastiCache) are
+the right call **in production**, not now:
+
+| Stay on Compose while… | Switch to managed when… |
+|---|---|
+| One dev, one laptop, field tests on LAN | Real users need uptime/HA/failover you can't provide |
+| You want free, unlimited GPS/DB writes | You need automated backups + point-in-time recovery |
+| You rebuild volumes freely for tests | You need preview DBs per PR (Neon branching shines here) |
+| No compliance/audit requirements | You need connection pooling at scale, read replicas, Redis persistence policies |
+
+The migration is deliberately near-zero: the code is provider-agnostic
+(Prisma + ioredis), so switching means changing only `DATABASE_URL` / `REDIS_URL`.
+Two caveats to respect when you do: use Neon's **pooled TCP** connection string with
+the standard Prisma client (HTTP/serverless drivers like `@prisma/adapter-neon` are
+only for edge functions), and confirm your Redis provider supports GEO commands with
+a non-evicting policy for the dispatch keys. The backend container image itself
+deploys unchanged to any host (Fly/Render/VM) — only the URLs move to managed.
+
+## 5. Monorepo file structure
 
 ```
 ParkPilot/
@@ -171,7 +241,7 @@ Generated/secret paths (gitignored, never commit): `apps/*/android|ios`, `apps/*
 
 ---
 
-## 5. Domain model & booking lifecycle
+## 6. Domain model & booking lifecycle
 
 ### Timer model (DRIVER) — the core loop
 
@@ -214,7 +284,7 @@ Quote (`price/hr × hours`) → `REQUESTED` → **space owner only** may accept
 
 ---
 
-## 6. Real-time protocol (Socket.io)
+## 7. Real-time protocol (Socket.io)
 
 Rooms: `user:{id}` (always), `driver:{id}` (partners), `booking:{id}` (explicit join +
 server auto-join of live bookings), `tracking:{driverId}` (customer subscribes).
@@ -233,7 +303,7 @@ server auto-join of live bookings), `tracking:{driverId}` (customer subscribes).
 
 ---
 
-## 7. REST API reference
+## 8. REST API reference
 
 Base URL = `API_URL` in `apps/*/App.tsx`. Auth: `Authorization: Bearer <accessToken>`
 (15 min TTL; clients auto-refresh via `/auth/refresh` and retry once on 401).
@@ -263,7 +333,7 @@ Base URL = `API_URL` in `apps/*/App.tsx`. Auth: `Authorization: Bearer <accessTo
 
 ---
 
-## 8. Getting started
+## 9. Getting started
 
 ### Prereqs
 
@@ -307,7 +377,7 @@ verify → timer → End → stop code → confirm → bill → pay. Full script
 
 ---
 
-## 9. Production gaps & roadmap
+## 10. Production gaps & roadmap
 
 Deliberate MVP simplifications (all labeled `mock`/Phase in code):
 
@@ -320,7 +390,7 @@ Deliberate MVP simplifications (all labeled `mock`/Phase in code):
 
 ---
 
-## 10. Testing & verification
+## 11. Testing & verification
 
 ```bash
 npx jest __tests__                 # 9 suites: auth errors, login/register screens,
@@ -341,7 +411,7 @@ Typecheck everything: `npm run typecheck -w backend` plus
 
 ---
 
-## 11. Configuration reference
+## 12. Configuration reference
 
 | Key / place | Purpose | Notes |
 |---|---|---|
@@ -352,7 +422,7 @@ Typecheck everything: `npm run typecheck -w backend` plus
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Most likely cause → fix |
 |---|---|
