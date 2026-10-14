@@ -1,7 +1,21 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 let client: AxiosInstance | null = null;
 let accessToken: string | null = null;
+
+// Set by SessionProvider: exchanges the saved refresh token for a fresh
+// access token, returning it (or null when refresh is impossible).
+// Without this, every API call starts 401ing 15 minutes after login and the
+// user sees "Booking failed" on a perfectly healthy server.
+let refreshHandler: (() => Promise<string | null>) | null = null;
+
+export function setRefreshHandler(fn: (() => Promise<string | null>) | null): void {
+  refreshHandler = fn;
+}
+
+interface RetriedConfig extends InternalAxiosRequestConfig {
+  _retried?: boolean;
+}
 
 export function initApi(baseURL: string): AxiosInstance {
   client = axios.create({ baseURL, timeout: 10000 });
@@ -12,6 +26,34 @@ export function initApi(baseURL: string): AxiosInstance {
     }
     return config;
   });
+  client.interceptors.response.use(
+    (res) => res,
+    async (error: AxiosError) => {
+      const config = error.config as RetriedConfig | undefined;
+      if (
+        error.response?.status === 401 &&
+        config &&
+        !config._retried &&
+        refreshHandler &&
+        !config.url?.includes('/auth/refresh') &&
+        !config.url?.includes('/auth/login') &&
+        !config.url?.includes('/auth/register')
+      ) {
+        config._retried = true;
+        try {
+          const fresh = await refreshHandler();
+          if (fresh) {
+            config.headers = config.headers ?? {};
+            (config.headers as Record<string, string>).Authorization = `Bearer ${fresh}`;
+            return client?.(config);
+          }
+        } catch {
+          // refresh failed — fall through to the original 401
+        }
+      }
+      throw error;
+    },
+  );
   return client;
 }
 

@@ -14,8 +14,8 @@ jest.mock('../packages/api/src/index', () => ({
   acceptBooking: jest.fn(),
 }));
 
-// react-native-maps needs a native binary; stub it (screens only render it
-// on explicit "See on map" expand, which tests never touch).
+// react-native-maps needs a native binary; stub it (screens only pass
+// <Marker> elements as data — SafeMap renders OSM in a WebView instead).
 jest.mock('react-native-maps', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -23,6 +23,16 @@ jest.mock('react-native-maps', () => {
     __esModule: true,
     default: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
     Marker: () => null,
+  };
+});
+
+// WebView renders real maps on device; in tests it is a stub.
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    WebView: () => <View />,
   };
 });
 

@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Marker } from 'react-native-maps';
+import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
 import { cancelBooking, listBookings, payBooking, requestStopOtp, verifyStopOtp } from '../../../../packages/api/src/index';
@@ -36,7 +39,10 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   const [nowMs, setNowMs] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [frame, setFrame] = useState(0);
+  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
   const partnerRef = useRef<string | null>(null);
+  const pickupPlace = usePlaceName(booking?.pickupLat, booking?.pickupLng);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +139,21 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   const canPay = booking != null && booking.paymentStatus === 'PENDING' && (status === 'ACCEPTED' || status === 'ONGOING' || status === 'COMPLETED');
   const canCancel = status === 'REQUESTED' || status === 'ACCEPTED';
 
+  const pickup = booking && booking.pickupLat != null && booking.pickupLng != null
+    ? { lat: booking.pickupLat, lng: booking.pickupLng }
+    : null;
+  const showLiveMap = (status === 'ACCEPTED' || status === 'ONGOING') && pickup !== null;
+  const mapRegion = pos && pickup
+    ? {
+        latitude: (pos.lat + pickup.lat) / 2,
+        longitude: (pos.lng + pickup.lng) / 2,
+        latitudeDelta: Math.max(0.03, Math.abs(pos.lat - pickup.lat) * 2.4 + 0.01),
+        longitudeDelta: Math.max(0.03, Math.abs(pos.lng - pickup.lng) * 2.4 + 0.01),
+      }
+    : pickup
+      ? { latitude: pickup.lat, longitude: pickup.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+      : { latitude: 28.6139, longitude: 77.209, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+
   const pay = async (): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -214,6 +235,31 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
         </Card>
       ) : null}
 
+      {showLiveMap && pickup ? (
+        <Card>
+          <Text style={styles.heading}>Where's my driver?</Text>
+          <Text style={styles.dim}>Pickup: {pickupPlace}</Text>
+          <SafeMapView
+            key={`trk-${pos ? 'live' : 'wait'}-${frame}`}
+            initialRegion={mapRegion}
+            style={styles.map}
+            route={pos ? { from: { latitude: pos.lat, longitude: pos.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } } : null}
+            onRouteInfo={setRouteInfo}
+          >
+            <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" />
+            {pos ? <Marker coordinate={{ latitude: pos.lat, longitude: pos.lng }} title="Driver" pinColor="blue" /> : null}
+          </SafeMapView>
+          <Text style={styles.dim}>
+            {pos
+              ? routeInfo
+                ? `Driver ${routeInfo.distanceKm.toFixed(1)} km away · ~${Math.max(1, Math.round(routeInfo.durationMin))} min (${pings} live updates)`
+                : `Driver located (${pings} live updates) — finding their route…`
+              : 'Waiting for your driver to start broadcasting…'}
+          </Text>
+          {pos ? <Button title="Recenter map" variant="secondary" onPress={() => setFrame((n) => n + 1)} /> : null}
+        </Card>
+      ) : null}
+
       {status === 'ONGOING' && booking?.startedAt ? (
         <Card>
           <Text style={styles.heading}>Timer running</Text>
@@ -256,6 +302,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 12 },
   title: { fontSize: 20, fontWeight: '700' },
   heading: { fontSize: 16, fontWeight: '700' },
+  map: { height: 240 },
   otp: { fontSize: 44, fontWeight: '800', textAlign: 'center', letterSpacing: 8 },
   timer: { fontSize: 40, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
   dim: { color: '#6b7280' },

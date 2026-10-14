@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import type { ParkingSpace } from '../../../../packages/types/src';
 import { nearbySpaces } from '../../../../packages/api/src/index';
 import { Button, PriceTag, SegmentedControl } from '../../../../packages/ui/src';
+import { coordsLabel, usePlaceNames } from '../../../../packages/mobile/src/map/geocode';
 
 type Space = ParkingSpace & { distanceKm: number };
 
@@ -25,6 +26,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const placeNames = usePlaceNames(spaces.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })));
   const mounted = useRef(false);
 
   const fetchFor = useCallback(async (lat: number, lng: number, r: number): Promise<void> => {
@@ -88,6 +90,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
     >
       <SafeMapView
         initialRegion={region}
+        center={{ latitude: region.latitude, longitude: region.longitude }}
         onRegionChangeComplete={(r: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => setRegion(r)}
         style={styles.map}
       >
@@ -124,6 +127,7 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
         {spaces.map((s) => (
           <Pressable key={`list-${s.id}`} style={styles.row} onPress={() => onBookParking(s)}>
             <Text style={styles.name}>{s.title} · {s.distanceKm} km</Text>
+            <Text style={styles.addr}>{placeNames[s.id] ?? coordsLabel(s.lat, s.lng)}</Text>
             <PriceTag paise={s.pricePerHourPaise} label="per hr" />
           </Pressable>
         ))}
@@ -142,5 +146,6 @@ const styles = StyleSheet.create({
   hint: { color: '#6b7280', fontSize: 12 },
   row: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, gap: 4 },
   name: { fontSize: 16, fontWeight: '600' },
+  addr: { color: '#6b7280', fontSize: 13 },
   error: { color: '#dc2626' },
 });

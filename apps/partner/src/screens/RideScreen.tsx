@@ -5,6 +5,7 @@ import type { Booking } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
 import { completeBooking, listBookings, requestStartOtp, verifyStartOtp } from '../../../../packages/api/src/index';
 import { Button, Card, OtpInput, StatusPill } from '../../../../packages/ui/src';
+import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 function sock(apiURL: string, token: string): ReturnType<typeof ensureSocket> {
@@ -44,6 +45,7 @@ export function RideScreen({
   const [busy, setBusy] = useState(false);
   const watcher = useRef<{ remove(): void } | null>(null);
   const lastSent = useRef(0);
+  const customerPlace = usePlaceName(booking?.pickupLat, booking?.pickupLng);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +204,9 @@ export function RideScreen({
       {booking ? <StatusPill status={booking.status} /> : <Text>Loading…</Text>}
       {booking?.estimatedHours ? (
         <Text style={styles.dim}>Customer estimate: {booking.estimatedHours} hr · ₹{(rate / 100).toFixed(0)}/hr fixed</Text>
+      ) : null}
+      {booking && (booking.pickupLat != null && booking.pickupLng != null) ? (
+        <Text style={styles.dim}>Customer location: {customerPlace}</Text>
       ) : null}
 
       <Card>

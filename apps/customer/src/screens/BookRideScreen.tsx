@@ -4,8 +4,9 @@ import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking, BookingStatus, DriverHoursQuote } from '../../../../packages/types/src';
-import { cancelBooking, createBooking, quoteDriverHours } from '../../../../packages/api/src/index';
+import { cancelBooking, createBooking, listBookings, quoteDriverHours } from '../../../../packages/api/src/index';
 import { Button, Card, PriceTag, StatusPill } from '../../../../packages/ui/src';
+import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 function socketFor(apiURL: string, token: string): ReturnType<typeof ensureSocket> {
@@ -39,13 +40,72 @@ export function BookRideScreen({
   const [liveStatus, setLiveStatus] = useState<BookingStatus | null>(null);
   const [notified, setNotified] = useState(0);
   const [pickup, setPickup] = useState<Pin | null>(null);
+  const pickupPlace = usePlaceName(pickup?.lat, pickup?.lng);
   const [mapCenter, setMapCenter] = useState({ latitude: 28.6139, longitude: 77.209, latitudeDelta: 0.05, longitudeDelta: 0.05 });
   const [locBusy, setLocBusy] = useState(false);
   const [rejections, setRejections] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   void active;
-  void lastUpdate;
+
+  // Restore the live booking on open: the card used to exist only in memory,
+  // so reopening the app (or remounting) wiped it even though the ledger
+  // still had it REQUESTED. The ledger (createdAt desc) yields the newest
+  // open DRIVER booking; an in-progress local draft is never clobbered.
+  useEffect(() => {
+    let cancelled = false;
+    void listBookings()
+      .then(({ bookings }) => {
+        if (cancelled) return;
+        const open = bookings.find((b) => b.type === 'DRIVER' && (b.status === 'REQUESTED' || b.status === 'ACCEPTED' || b.status === 'ONGOING'));
+        if (open) {
+          setBooking((cur) => cur ?? open);
+          setLiveStatus((cur) => cur ?? open.status);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const syncOurs = async (id: string): Promise<void> => {
+    try {
+      const { bookings } = await listBookings();
+      const b = bookings.find((x) => x.id === id);
+      if (b) {
+        setBooking(b);
+        setLiveStatus(b.status);
+      }
+    } catch {
+      // next tick retries
+    }
+  };
+
+  // Poll convergence: if every socket push was missed (backgrounded app,
+  // late partner accept after offline), the card still flips within seconds
+  // instead of lying on REQUESTED forever. Stops at terminal states.
+  useEffect(() => {
+    if (!booking) return;
+    const s = liveStatus ?? booking.status;
+    if (s === 'COMPLETED' || s === 'CANCELLED') return;
+    const t = setInterval(() => void syncOurs(booking.id), 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.id, liveStatus]);
+
+  // Global tick from App (any booking:updated while another tab visible) and
+  // tab refocus both re-sync our card from the ledger.
+  useEffect(() => {
+    if (!booking || lastUpdate === 0) return;
+    void syncOurs(booking.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUpdate]);
+  useEffect(() => {
+    if (!active || !booking) return;
+    void syncOurs(booking.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // Listen for updates to OUR booking only.
   useEffect(() => {
@@ -173,6 +233,7 @@ export function BookRideScreen({
       <View style={styles.pickerCard}>
         <SafeMapView
           initialRegion={mapCenter}
+          center={{ latitude: mapCenter.latitude, longitude: mapCenter.longitude }}
           onRegionChangeComplete={(r: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => setMapCenter(r)}
           style={styles.map}
         >
@@ -185,7 +246,7 @@ export function BookRideScreen({
             onPress={() => setPickup({ lat: mapCenter.latitude, lng: mapCenter.longitude })}
           />
         </View>
-        <Text style={styles.dim}>{pickup ? `Pickup ${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}` : 'Pickup: not set'}</Text>
+        <Text style={styles.dim}>{pickup ? `Pickup: ${pickupPlace}` : 'Pickup: not set — use GPS or confirm the pin'}</Text>
       </View>
       <Button title={locBusy ? 'Reading GPS…' : 'Use my GPS as pickup'} onPress={useMyLocation} disabled={locBusy} />
 
@@ -202,7 +263,8 @@ export function BookRideScreen({
         <Card>
           <StatusPill status={status} />
           <Text style={styles.dim}>
-            {booking.id.slice(0, 8)} · {booking.estimatedHours} hr est · {notified} driver(s) notified
+            {booking.id.slice(0, 8)} · {booking.estimatedHours} hr est
+            {notified > 0 ? ` · ${notified} driver(s) notified` : ''}
             {rejections > 0 ? ` · ${rejections} declined, still searching` : ''}
           </Text>
           {waiting ? <Text style={styles.dim}>Waiting for a partner to accept… keep this tab open or watch Trips.</Text> : null}

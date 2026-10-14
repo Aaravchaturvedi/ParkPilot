@@ -1,50 +1,38 @@
-# Maps setup — fixing the black map screen
+# Maps — OpenStreetMap, no API key
 
-Symptom: the map area is black/empty, but pins, coordinates, lists and all
-other UI work. That means the native map view is mounted and your code is
-fine — only the **tile layer** is missing. There are exactly two causes:
+All maps render **OpenStreetMap tiles via Leaflet inside a WebView**
+(`packages/mobile/src/map/SafeMap.tsx`). There is deliberately no Google
+Maps dependency for tiles:
 
-## Cause 1: no Google Maps API key (Android)
+- **No API key needed.** Nothing to create, restrict, or bill.
+- **Works in Expo Go** (WebView ships with Go; native map modules don't),
+  dev builds, and web.
+- **Attribution is baked in**: every tile layer carries
+  "© OpenStreetMap contributors" per the OSM licence — do not remove it.
+- Markers are `<Marker coordinate title pinColor />` elements read as data
+  (green = pickup/you, red = drop/space, blue = partner).
 
-On Android, `react-native-maps` uses the Google Maps SDK, which refuses to
-serve tiles without a key. iOS uses Apple Maps and needs no key.
+## Tile usage policy (read before scaling)
 
-1. Go to Google Cloud Console → create/select a project → enable **Maps SDK
-   for Android** (APIs & Services → Library).
-2. Credentials → Create Credentials → API key.
-3. Restrict the key (recommended): Application restrictions → Android apps →
-   add both package names with any SHA-1 while testing:
-   - `com.parkpilot.customer`
-   - `com.parkpilot.partner`
-   (Keys without restrictions also work for local testing; never ship one.)
-4. Set it in your shell (both apps read it at **build time**):
-   ```bash
-   export GOOGLE_MAPS_API_KEY=AIzaSy...
-   ```
-   or copy `.env.example` → `.env` and set it there. The key is baked into
-   `AndroidManifest.xml` as `com.google.android.geo.API_KEY` — it never goes
-   through git (`apps/*/app.config.js` reads `process.env` only).
-5. **Rebuild** — config changes need a fresh native build:
-   ```bash
-   cd apps/customer && npx expo run:android
-   cd ../partner && npx expo run:android
-   ```
+Tiles come from `tile.openstreetmap.org`, which is a donated service with a
+[usage policy](https://operations.osmfoundation.org/policies/tiles/): no
+heavy/bulk use, desktop-user-agent-style traffic only. A handful of test
+phones is fine. For production, point `TILE_URL` in `SafeMap.tsx` at a paid
+or free-tier tile provider with the same `{z}/{x}/{y}` format, e.g.:
 
-## Cause 2: running inside Expo Go
+- Stadia Maps (free tier, needs a key): `https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=KEY`
+- MapTiler (free tier, needs a key): `https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=KEY`
 
-`react-native-maps` is native code and is **not included in Expo Go** — maps
-can only render in a development build (`npx expo run:android` /
-`npx expo run:ios`) or an EAS build. If you opened the app via Expo Go, that
-alone explains the black screen; no key will fix it there.
+and update `TILE_ATTR` to their required attribution.
 
-## How to tell which one it is
+## If tiles don't load
 
-- **Expo Go** → Cause 2. Rebuild as a dev client.
-- **Dev build + no key set at build time** → Cause 1. Export the key and rebuild.
-- **Dev build + key set, still black** → the key is wrong: check Maps SDK for
-  Android is enabled, the package name matches (`com.parkpilot.customer` /
-  `.partner`), and the restriction allows your debug SHA-1.
+Leaflet (CDN) + tiles need internet on the phone — the map shows
+"Map couldn't load — check data/WiFi" otherwise. No key, no rebuild, no
+native config is ever involved.
 
-The app helps too: every map now shows "Loading map…" and, if tiles still
-aren't ready after 8s, a banner naming these two causes
-(`packages/mobile/src/map/SafeMap.tsx`).
+## Legacy note
+
+`apps/*/app.config.js` still wires an optional `GOOGLE_MAPS_API_KEY` for
+Android. It is **unused** while maps render OSM and can be ignored unless
+you switch back to Google tiles.

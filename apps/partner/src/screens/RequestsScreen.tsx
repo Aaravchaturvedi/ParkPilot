@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatKm, haversineKm } from '../../../../packages/types/src';
 import { Button, Card, EmptyState, SegmentedControl, StatusPill } from '../../../../packages/ui/src';
+import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { acceptBooking as restAccept } from '../../../../packages/api/src/index';
 
@@ -58,7 +59,6 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [maxKm, setMaxKm] = useState(Infinity);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   // Whenever the tab becomes visible while online, converge with the ledger
   // (covers pushes missed while the app was backgrounded).
@@ -219,59 +219,100 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
         <EmptyState title="No requests yet" hint="Stay online — new bookings pop up here automatically, nearest first." />
       ) : null}
       {!online && incoming.length === 0 ? <EmptyState title="You're offline" hint="Go online to receive ride requests." /> : null}
-      {visible.map(({ booking, at, kmAway }) => {
-        const pickup = pickupOf(booking);
-        const isOpen = expanded === booking.id;
-        return (
-          <Card key={booking.id}>
-            <Text style={styles.title}>
-              {booking.estimatedHours ?? '?'} hr · {(booking.amountPaise / 100).toFixed(2)} est
-            </Text>
-            <Text style={styles.dim}>₹{((booking.pricePerHourPaise ?? 15000) / 100).toFixed(0)}/hr fixed · you keep {(booking.partnerPayoutPaise / 100).toFixed(2)} (est)</Text>
-            <Text style={styles.away}>
-              {kmAway !== null
-                ? `${formatKm(kmAway)} away from you`
-                : pickup
-                  ? 'Enable GPS to see your distance'
-                  : 'Distance unknown (customer shared no pickup)'}
-            </Text>
-            <Text style={styles.dim}>
-              {booking.id.slice(0, 8)}
-              {` · ${age(at)}`}
-            </Text>
-            <Text style={styles.dim}>Customer: {booking.customerId.slice(0, 8)}</Text>
-            <Text style={styles.dim}>
-              Pickup (where they are): {pickup ? `${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}` : 'not shared'}
-            </Text>
-            {pickup && me ? (
-              <View style={styles.mapWrap}>
-                {isOpen ? (
-                  <SafeMapView
-                    initialRegion={{
-                      latitude: (me.lat + pickup.lat) / 2,
-                      longitude: (me.lng + pickup.lng) / 2,
-                      latitudeDelta: Math.max(0.02, Math.abs(me.lat - pickup.lat) * 2.5),
-                      longitudeDelta: Math.max(0.02, Math.abs(me.lng - pickup.lng) * 2.5),
-                    }}
-                    style={styles.map}
-                  >
-                    <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" />
-                    <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup" pinColor="green" />
-                  </SafeMapView>
-                ) : null}
-                <Button title={isOpen ? 'Hide map' : 'See on map'} onPress={() => setExpanded(isOpen ? null : booking.id)} />
-              </View>
-            ) : null}
-            <StatusPill status={booking.status} />
-            <View style={styles.row}>
-              <Button title={busyId === booking.id ? 'Accepting…' : 'Accept'} onPress={() => accept(booking.id)} disabled={busyId === booking.id} />
-              <Button title="Reject" onPress={() => reject(booking.id)} disabled={busyId === booking.id} />
-            </View>
-          </Card>
-        );
-      })}
+      {visible.map(({ booking, at, kmAway }) => (
+        <RequestCard
+          key={booking.id}
+          booking={booking}
+          at={at}
+          kmAway={kmAway}
+          me={me}
+          busy={busyId === booking.id}
+          onAccept={() => accept(booking.id)}
+          onReject={() => reject(booking.id)}
+        />
+      ))}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </ScrollView>
+  );
+}
+
+// One request card: own hooks for expand/route/place-name (hooks can't live
+// in the .map above). Shows WHERE the customer is in words, how far, and the
+// driving route there — a partner decides by place, not by coordinates.
+function RequestCard({
+  booking,
+  at,
+  kmAway,
+  me,
+  busy,
+  onAccept,
+  onReject,
+}: {
+  booking: Booking;
+  at: number;
+  kmAway: number | null;
+  me: { lat: number; lng: number } | null;
+  busy: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
+  const pickup = pickupOf(booking);
+  const place = usePlaceName(pickup?.lat, pickup?.lng);
+  return (
+    <Card>
+      <Text style={styles.title}>
+        {booking.estimatedHours ?? '?'} hr · {(booking.amountPaise / 100).toFixed(2)} est
+      </Text>
+      <Text style={styles.dim}>₹{((booking.pricePerHourPaise ?? 15000) / 100).toFixed(0)}/hr fixed · you keep {(booking.partnerPayoutPaise / 100).toFixed(2)} (est)</Text>
+      <Text style={styles.away}>
+        {kmAway !== null
+          ? `${formatKm(kmAway)} away from you`
+          : pickup
+            ? 'Enable GPS to see your distance'
+            : 'Distance unknown (customer shared no pickup)'}
+      </Text>
+      <Text style={styles.dim}>
+        {booking.id.slice(0, 8)}
+        {` · ${age(at)}`}
+      </Text>
+      <Text style={styles.dim}>Customer: {booking.customerId.slice(0, 8)}</Text>
+      <Text style={styles.dim}>Pickup (where they are): {pickup ? place : 'not shared'}</Text>
+      {pickup && me ? (
+        <View style={styles.mapWrap}>
+          {open ? (
+            <>
+              <SafeMapView
+                initialRegion={{
+                  latitude: (me.lat + pickup.lat) / 2,
+                  longitude: (me.lng + pickup.lng) / 2,
+                  latitudeDelta: Math.max(0.02, Math.abs(me.lat - pickup.lat) * 2.5),
+                  longitudeDelta: Math.max(0.02, Math.abs(me.lng - pickup.lng) * 2.5),
+                }}
+                style={styles.map}
+                route={{ from: { latitude: me.lat, longitude: me.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } }}
+                onRouteInfo={setRouteInfo}
+              >
+                <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" />
+                <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup" pinColor="green" />
+              </SafeMapView>
+              {routeInfo ? (
+                <Text style={styles.route}>Drive: {routeInfo.distanceKm.toFixed(1)} km · ~{Math.max(1, Math.round(routeInfo.durationMin))} min to customer</Text>
+              ) : (
+                <Text style={styles.dim}>Finding the driving route…</Text>
+              )}
+            </>
+          ) : null}
+          <Button title={open ? 'Hide map' : 'See route on map'} onPress={() => setOpen(!open)} />
+        </View>
+      ) : null}
+      <StatusPill status={booking.status} />
+      <View style={styles.row}>
+        <Button title={busy ? 'Accepting…' : 'Accept'} onPress={onAccept} disabled={busy} />
+        <Button title="Reject" onPress={onReject} disabled={busy} />
+      </View>
+    </Card>
   );
 }
 
@@ -285,5 +326,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   mapWrap: { gap: 8 },
   map: { height: 180 },
+  route: { color: '#4338ca', fontWeight: '700' },
   error: { color: '#dc2626' },
 });

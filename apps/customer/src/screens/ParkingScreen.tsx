@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import * as Location from 'expo-location';
 import { Marker } from 'react-native-maps';
 import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { coordsLabel, usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import type { Booking, ParkingQuote, ParkingSpace } from '../../../../packages/types/src';
 import { createBooking, listBookings, payBooking } from '../../../../packages/api/src/index';
 import { quoteParking } from '../../../../packages/api/src/index';
@@ -19,6 +21,23 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
   const [booking, setBooking] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
+  const spaceAddress = usePlaceName(space.lat, space.lng);
+
+  // Own GPS: origin of the driving route to the space (silent fail = no route).
+  useEffect(() => {
+    (async () => {
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status !== 'granted') return;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        setMe({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      } catch {
+        // route simply stays hidden
+      }
+    })();
+  }, []);
 
   // Live status for our booking only.
   useEffect(() => {
@@ -95,18 +114,23 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{space.title}</Text>
       <Text style={styles.dim}>
-        {space.address} · {paiseToRupees(space.pricePerHourPaise)}/hr
+        {spaceAddress} · {paiseToRupees(space.pricePerHourPaise)}/hr
       </Text>
-      {/* The selected park location on a real map — what you picked is what you get. */}
+      {/* The selected park location on a real map + your driving route to it. */}
       <SafeMapView
-        initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+        initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
         style={styles.map}
+        route={me ? { from: { latitude: me.lat, longitude: me.lng }, to: { latitude: space.lat, longitude: space.lng } } : null}
+        onRouteInfo={setRouteInfo}
       >
-        <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} />
+        {me ? <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" /> : null}
+        <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} pinColor="red" />
       </SafeMapView>
-      <Text style={styles.dim}>
-        Pinned at {space.lat.toFixed(4)}, {space.lng.toFixed(4)}
-      </Text>
+      {routeInfo ? (
+        <Text style={styles.route}>Drive: {routeInfo.distanceKm.toFixed(1)} km · ~{Math.max(1, Math.round(routeInfo.durationMin))} min from your location</Text>
+      ) : (
+        <Text style={styles.dim}>Pinned at {coordsLabel(space.lat, space.lng)}</Text>
+      )}
       <View style={styles.row}>
         <Button title="−" onPress={() => setHours((h) => Math.max(1, h - 1))} />
         <Text style={styles.hours}>{hours}h</Text>
@@ -146,6 +170,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 12 },
   title: { fontSize: 20, fontWeight: '700' },
   map: { height: 200 },
+  route: { color: '#4338ca', fontWeight: '700' },
   dim: { color: '#6b7280' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   hours: { fontSize: 18, fontWeight: '600' },

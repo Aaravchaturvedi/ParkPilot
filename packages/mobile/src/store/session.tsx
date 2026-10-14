@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { User } from '../../../types/src';
-import { initApi, login as apiLogin, logout as apiLogout, me, refreshSession, register as apiRegister, setAccessToken } from '../../../api/src/index';
+import { initApi, login as apiLogin, logout as apiLogout, me, refreshSession, register as apiRegister, setAccessToken, setRefreshHandler } from '../../../api/src/index';
 import { loadSession, saveSession, clearSession } from '../storage/sessionStore';
 
 interface Session {
@@ -44,9 +44,33 @@ export function SessionProvider({ baseURL, children }: { baseURL: string; childr
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Single in-flight refresh shared by all concurrent 401 retries.
+  const refreshing = useRef<Promise<string | null> | null>(null);
 
   useEffect(() => {
     initApi(baseURL);
+    // Mid-session 401s (15m access TTL) auto-refresh once and retry the
+    // original call, so the user never sees a false "Booking failed".
+    setRefreshHandler(() => {
+      if (!refreshing.current) {
+        refreshing.current = (async (): Promise<string | null> => {
+          try {
+            const saved = await loadSession();
+            if (!saved) return null;
+            const fresh = await refreshSession(saved.refreshToken);
+            await saveSession({ accessToken: fresh.accessToken, refreshToken: fresh.refreshToken });
+            setAccessToken(fresh.accessToken);
+            setToken(fresh.accessToken);
+            return fresh.accessToken;
+          } catch {
+            return null;
+          } finally {
+            refreshing.current = null;
+          }
+        })();
+      }
+      return refreshing.current;
+    });
     (async () => {
       try {
         const loaded = await loadWithRefresh();
@@ -58,6 +82,7 @@ export function SessionProvider({ baseURL, children }: { baseURL: string; childr
         setReady(true);
       }
     })();
+    return () => setRefreshHandler(null);
   }, [baseURL]);
 
   const login = async (email: string, password: string): Promise<void> => {

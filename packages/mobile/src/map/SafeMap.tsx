@@ -1,93 +1,118 @@
-// Shared map with built-in failure visibility. A missing Google Maps key or
-// running inside Expo Go both produce a black/empty tile grid with zero
-// console signal to the user — so this wrapper shows a loading veil and, if
-// tiles still aren't ready after 8s, the exact two things to check.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import Constants from 'expo-constants';
-import MapView from 'react-native-maps';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import {
+  PIN_COLORS,
+  pageHtml,
+  type MarkerSpec,
+  type RouteSpec,
+  type SafeMapRegion,
+} from './osmTemplate';
 
-export interface SafeMapRegion {
-  latitude: number;
-  longitude: number;
-  latitudeDelta: number;
-  longitudeDelta: number;
-}
+export type { MarkerSpec, RouteSpec, SafeMapRegion };
 
 interface Props {
   initialRegion: SafeMapRegion;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   onRegionChangeComplete?: (r: SafeMapRegion) => void;
+  // Driving route overlay (OSRM, free): {from: you, to: destination}.
+  route?: RouteSpec | null;
+  onRouteInfo?: (info: { distanceKm: number; durationMin: number } | null) => void;
+  // Controlled re-center: when the screen moves this (GPS fix, "use my
+  // location"), the map glides there. Map drags flow back out through
+  // onRegionChangeComplete; identical values bail out in React, so no
+  // ping-pong loop is possible.
+  center?: { latitude: number; longitude: number } | null;
 }
 
-export function SafeMapView({ initialRegion, style, children, onRegionChangeComplete }: Props): React.JSX.Element {
-  const [ready, setReady] = useState(false);
-  const [slow, setSlow] = useState(false);
-  const readyRef = useRef(false);
+// Marker children (<Marker coordinate title pinColor />) are read as data —
+// never rendered natively — so this works in Expo Go, dev builds, and web.
+function readMarkers(children: React.ReactNode): MarkerSpec[] {
+  const out: MarkerSpec[] = [];
+  React.Children.forEach(children, (c) => {
+    if (!React.isValidElement(c)) return;
+    const p = c.props as { coordinate?: { latitude: number; longitude: number }; title?: string; pinColor?: string };
+    if (p.coordinate && Number.isFinite(p.coordinate.latitude) && Number.isFinite(p.coordinate.longitude)) {
+      out.push({
+        latitude: p.coordinate.latitude,
+        longitude: p.coordinate.longitude,
+        title: p.title,
+        color: PIN_COLORS[p.pinColor ?? ''] ?? '#ef4444',
+      });
+    }
+  });
+  return out;
+}
 
+export function SafeMapView({ initialRegion, style, children, onRegionChangeComplete, route, onRouteInfo, center }: Props): React.JSX.Element {
+  const [failed, setFailed] = useState(false);
+  const webRef = useRef<WebView>(null);
+  const cbRef = useRef(onRegionChangeComplete);
+  cbRef.current = onRegionChangeComplete;
+  const routeCbRef = useRef(onRouteInfo);
+  routeCbRef.current = onRouteInfo;
+
+  const markers = useMemo(() => readMarkers(children), [children]);
+  const html = useMemo(() => pageHtml(initialRegion, markers, route ?? null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Push marker/route/center updates into the live page without reloads.
+  // Center glides the map on GPS fixes; user drags echo back identical
+  // values and React bails out, so this cannot loop.
+  const liveKey = JSON.stringify({ markers, route: route ?? null, center: center ?? null });
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (!readyRef.current) setSlow(true);
-    }, 8000);
-    return () => clearTimeout(t);
-  }, []);
+    const payload = JSON.parse(liveKey) as { markers: MarkerSpec[]; route: RouteSpec | null; center: { latitude: number; longitude: number } | null };
+    webRef.current?.injectJavaScript(`window.__updateMap(${JSON.stringify(JSON.stringify(payload))});true;`);
+  }, [liveKey]);
 
-  // Expo Go ships no native maps module: render a graceful fallback instead
-  // of a native crash, so the whole app (booking, OTP, timer, wallet) still
-  // runs there. Real tiles need a dev build (docs/MAPS_SETUP.md).
-  if (isExpoGo()) {
+  const onMessage = (e: WebViewMessageEvent): void => {
+    try {
+      const msg = JSON.parse(e.nativeEvent.data) as
+        | ({ kind: 'region' } & SafeMapRegion)
+        | { kind: 'route'; distanceKm: number; durationMin: number };
+      if (msg.kind === 'route') {
+        if (Number.isFinite(msg.distanceKm) && Number.isFinite(msg.durationMin)) {
+          routeCbRef.current?.({ distanceKm: msg.distanceKm, durationMin: msg.durationMin });
+        }
+        return;
+      }
+      if (Number.isFinite(msg.latitude) && Number.isFinite(msg.longitude)) cbRef.current?.(msg);
+    } catch {
+      // ignore malformed posts
+    }
+  };
+
+  if (failed) {
     return (
-      <View style={[styles.wrap, style, styles.goFallback]}>
-        <Text style={styles.goTitle}>Map preview unavailable in Expo Go</Text>
-        <Text style={styles.goHint}>Everything else works — use the list below, or GPS pinning. For real map tiles, open this project in a dev build (`npx expo run:android`).</Text>
+      <View style={[styles.wrap, style, styles.failed]}>
+        <Text style={styles.failedTitle}>Map couldn't load</Text>
+        <Text style={styles.failedHint}>Map tiles need an internet connection (OpenStreetMap + Leaflet CDN). Check data/WiFi and reopen this tab.</Text>
       </View>
     );
   }
 
   return (
     <View style={[styles.wrap, style]}>
-      <MapView
-        initialRegion={initialRegion}
-        style={styles.map}
-        onRegionChangeComplete={onRegionChangeComplete}
-        onMapReady={() => {
-          readyRef.current = true;
-          setReady(true);
-        }}
-      >
-        {children}
-      </MapView>
-      {!ready ? (
-        <View pointerEvents="none" style={styles.veil}>
-          <Text style={styles.veilText}>Loading map…</Text>
-        </View>
-      ) : null}
-      {slow && !ready ? (
-        <View style={styles.hint}>
-          <Text style={styles.hintText}>Map tiles aren't loading. Two usual causes: (1) no Google Maps API key in the build — see docs/MAPS_SETUP.md; (2) running in Expo Go, which can't render maps — use a dev build (`npx expo run:android`).</Text>
-        </View>
-      ) : null}
+      <WebView
+        ref={webRef}
+        source={{ html }}
+        style={styles.web}
+        originWhitelist={['*']}
+        onMessage={onMessage}
+        onError={() => setFailed(true)}
+        onHttpError={() => setFailed(true)}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled={false}
+      />
     </View>
   );
 }
 
-function isExpoGo(): boolean {
-  try {
-    return (Constants as unknown as { appOwnership?: string } | null)?.appOwnership === 'expo';
-  } catch {
-    return false;
-  }
-}
-
 const styles = StyleSheet.create({
-  wrap: { overflow: 'hidden' },
-  map: { flex: 1 },
-  veil: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
-  veilText: { color: '#6b7280' },
-  hint: { padding: 8, backgroundColor: '#fef3c7' },
-  hintText: { color: '#92400e', fontSize: 12 },
-  goFallback: { alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#eef2ff', padding: 16 },
-  goTitle: { fontWeight: '800', color: '#4338ca', textAlign: 'center' },
-  goHint: { color: '#6b7280', fontSize: 12, textAlign: 'center' },
+  wrap: { overflow: 'hidden', backgroundColor: '#e5e7eb' },
+  web: { flex: 1, backgroundColor: 'transparent' },
+  failed: { alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
+  failedTitle: { fontWeight: '800', color: '#111827' },
+  failedHint: { color: '#6b7280', fontSize: 12, textAlign: 'center' },
 });
