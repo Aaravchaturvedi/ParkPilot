@@ -10,7 +10,7 @@ import type { ParkingSpace } from '../../packages/types/src';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://valves-facing-log-eternal.trycloudflare.com';
+const API_URL = 'http://192.168.1.6:4000';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();

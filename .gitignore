@@ -20,3 +20,6 @@ apps/*/.expo
 # OS / editor
 .DS_Store
 *.log
+
+# local-only: live cloudflared tunnel URLs live ONLY as uncommitted edits
+# to apps/*/App.tsx API_URL (ephemeral, die on reboot — never commit).
