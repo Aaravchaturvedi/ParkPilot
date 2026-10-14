@@ -15,6 +15,7 @@
     "test:sockets": "tsx scripts/socket-test.ts",
     "test:location": "tsx scripts/location-test.ts",
     "test:dispatch": "tsx scripts/dispatch-test.ts",
+    "test:presence": "tsx scripts/presence-test.ts",
     "test:simulator": "tsx scripts/simulate-driver.ts"
   },
   "dependencies": {

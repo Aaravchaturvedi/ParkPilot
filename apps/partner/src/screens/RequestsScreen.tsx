@@ -2,15 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { Booking } from '../../../../packages/types/src';
 import { Button, Card, StatusPill } from '../../../../packages/ui/src';
-import { connectSocket } from '../../../../packages/mobile/src/socket';
+import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 
 interface Incoming {
   booking: Booking;
   at: number;
 }
 
-export function RequestsScreen({ apiURL, token, onActive }: { apiURL: string; token: string; onActive: (bookingId: string) => void }): React.JSX.Element {
-  const [online, setOnline] = useState(false);
+export function RequestsScreen({ apiURL, token, online, setOnline, onActive }: { apiURL: string; token: string; online: boolean; setOnline: (v: boolean) => void; onActive: (bookingId: string) => void }): React.JSX.Element {
   const [incoming, setIncoming] = useState<Incoming[]>([]);
   const [active, setActive] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +17,8 @@ export function RequestsScreen({ apiURL, token, onActive }: { apiURL: string; to
   useEffect(() => {
     if (!online) return;
     const s = connectSocket(apiURL, token);
+    // Presence doubles as re-announce on reconnect (disconnect clears it server-side).
+    s.emit('partner:online', {});
     const onRequest = (evt: { booking: Booking }): void => {
       setIncoming((list) => (list.some((i) => i.booking.id === evt.booking.id) ? list : [{ booking: evt.booking, at: Date.now() }, ...list]));
     };
@@ -52,7 +53,13 @@ export function RequestsScreen({ apiURL, token, onActive }: { apiURL: string; to
 
   return (
     <View style={styles.root}>
-      <Button title={online ? 'Go offline' : 'Go online'} onPress={() => setOnline((o) => !o)} />
+      <Button
+        title={online ? 'Go offline' : 'Go online'}
+        onPress={() => {
+          if (online) (getSocket() ?? connectSocket(apiURL, token)).emit('partner:offline', {});
+          setOnline(!online);
+        }}
+      />
       {active ? (
         <Card>
           <Text style={styles.title}>Active ride</Text>

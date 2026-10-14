@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import prisma from '../lib/prisma';
 import { acceptBooking, type FullBooking } from '../services/bookings';
-import { nearbyDrivers, liveDriverIds } from './location';
+import { nearbyDrivers, liveDriverIds, onlinePartnerIds } from './location';
 
 const driverRoom = (id: string): string => `driver:${id}`;
 const userRoom = (id: string): string => `user:${id}`;
@@ -21,9 +21,13 @@ export async function dispatchNewBooking(io: Server | undefined, booking: FullBo
   }
   let ids: string[];
   if (booking.pickupLat != null && booking.pickupLng != null) {
+    // Prefer fresh GPS nearby; fall back to toggled-online partners
+    // (drivers broadcast GPS only after accepting a ride).
     ids = await nearbyDrivers(booking.pickupLng, booking.pickupLat, 5, 10);
+    if (ids.length === 0) ids = (await onlinePartnerIds()).slice(0, 10);
   } else {
-    ids = await liveDriverIds(10);
+    ids = (await onlinePartnerIds()).slice(0, 10);
+    if (ids.length === 0) ids = await liveDriverIds(10);
   }
   for (const id of ids) io.to(driverRoom(id)).emit('booking:request', { booking });
   return ids;

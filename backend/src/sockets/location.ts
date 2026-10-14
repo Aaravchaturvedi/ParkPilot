@@ -13,6 +13,16 @@ export function trackingRoom(driverId: string): string {
   return `tracking:${driverId}`;
 }
 
+export const ONLINE_PARTNERS_KEY = 'partners:online';
+
+// Explicit presence: set by the partner app's online toggle, NOT by mere
+// connection (an open app with toggle OFF must not receive dispatches).
+// Disconnect clears it as a safety net; the client re-emits online on
+// reconnect while its toggle is ON.
+export async function onlinePartnerIds(): Promise<string[]> {
+  return getRedis().smembers(ONLINE_PARTNERS_KEY);
+}
+
 export interface LastKnown {
   lat: number;
   lng: number;
@@ -96,6 +106,28 @@ export function registerLocationHandlers(io: Server, socket: Socket): void {
   socket.on('tracking:unsubscribe', ({ driverId }: { driverId?: string } = {}, ack?: Ack) => {
     void socket.leave(trackingRoom(driverId as string));
     ack?.({ ok: true });
+  });
+
+  socket.on('partner:online', async (_payload: unknown, ack?: Ack) => {
+    try {
+      if (role !== 'PARTNER' && role !== 'ADMIN') {
+        ack?.({ ok: false, error: 'only_partners' });
+        return;
+      }
+      await getRedis().sadd(ONLINE_PARTNERS_KEY, id);
+      ack?.({ ok: true });
+    } catch {
+      ack?.({ ok: false, error: 'presence_failed' });
+    }
+  });
+
+  socket.on('partner:offline', async (_payload: unknown, ack?: Ack) => {
+    try {
+      await getRedis().srem(ONLINE_PARTNERS_KEY, id);
+      ack?.({ ok: true });
+    } catch {
+      ack?.({ ok: false, error: 'presence_failed' });
+    }
   });
 }
 

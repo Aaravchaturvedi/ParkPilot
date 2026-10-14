@@ -1,8 +1,9 @@
 import { Server, Socket } from 'socket.io';
 import { verify } from '../lib/tokens';
+import { getRedis } from '../lib/redis';
 import type { FullBooking } from '../services/bookings';
 import { getBookingForParty } from '../services/bookings';
-import { registerLocationHandlers } from './location';
+import { registerLocationHandlers, ONLINE_PARTNERS_KEY } from './location';
 import { registerDispatchHandlers } from './dispatch';
 
 export const userRoom = (id: string): string => `user:${id}`;
@@ -48,8 +49,11 @@ export function initSockets(httpServer: import('http').Server): Server {
 
   io.on('connection', (socket: Socket) => {
     const { id, role } = socket.data.user as { id: string; role: string };
+    const isPartner = role === 'PARTNER' || role === 'ADMIN';
     void socket.join(userRoom(id));
-    if (role === 'PARTNER' || role === 'ADMIN') void socket.join(driverRoom(id));
+    if (isPartner) {
+      void socket.join(driverRoom(id));
+    }
 
     socket.emit('connected', { userId: id, rooms: [userRoom(id), ...(role === 'PARTNER' || role === 'ADMIN' ? [driverRoom(id)] : [])] });
 
@@ -66,6 +70,12 @@ export function initSockets(httpServer: import('http').Server): Server {
     socket.on('booking:leave', ({ bookingId }: JoinPayload, ack?: LeaveAck) => {
       void socket.leave(bookingRoom(bookingId));
       ack?.({ ok: true });
+    });
+
+    // Presence follows the partner's online toggle (see location.ts).
+    // Disconnect always clears it so crashed/backgrounded apps go offline.
+    socket.on('disconnect', () => {
+      if (isPartner) getRedis().srem(ONLINE_PARTNERS_KEY, id).catch(() => undefined);
     });
 
     registerLocationHandlers(io, socket);

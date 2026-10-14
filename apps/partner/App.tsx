@@ -11,12 +11,13 @@ import { HostScreen } from './src/screens/HostScreen';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://miller-permits-dsc-endless.trycloudflare.com';
+const API_URL = 'https://markets-fed-connectors-resolve.trycloudflare.com';
 
 function Shell(): React.JSX.Element {
   const { user, token, ready, logout } = useSession();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [tab, setTab] = useState<'requests' | 'ride' | 'wallet' | 'host' | 'kyc'>('requests');
+  const [online, setOnline] = useState(false); // survives tab switches (lives in App, not the screen)
   const [rideId, setRideId] = useState<string | null>(null);
   const [kyc, setKyc] = useState<KycStatus | null>(null);
 
@@ -61,7 +62,7 @@ function Shell(): React.JSX.Element {
     <View style={styles.root}>
       <Text style={styles.title}>Partner · {user.name}</Text>
       {tab === 'requests' ? (
-        <RequestsScreen apiURL={API_URL} token={token} onActive={goRide} />
+        <RequestsScreen apiURL={API_URL} token={token} online={online} setOnline={setOnline} onActive={goRide} />
       ) : tab === 'ride' ? (
         rideId ? (
           <RideScreen apiURL={API_URL} token={token} bookingId={rideId} onDone={() => setTab('requests')} />
