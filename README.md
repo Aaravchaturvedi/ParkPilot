@@ -1,156 +1,365 @@
-# ParkPilot - Architecture & Roadmap
+# ParkPilot — SmartDrive & Park Network
 
-This document outlines the technical architecture, monorepo file structure, and strategic development roadmap for **SmartDrive & Park Network**, a dual-sided urban mobility platform engineered to solve professional driver shortages and peer-to-peer (P2P) parking deficits.
+A dual-sided urban mobility platform: customers hire professional drivers **by time**
+(timer model with OTP handshake) and book peer-to-peer **parking spaces**;
+partners accept ride requests, run the timer, and host their own spaces.
+Real-time dispatch, live GPS tracking, and mock payments — in one TypeScript monorepo.
 
-## 1. Architecture & Tech Stack
+> **Status:** working MVP. Auth, timer bookings with OTP start/stop, parking bookings,
+> live tracking, wallets (mock), and both mobile apps are implemented and verified
+> (`tsc` clean, Jest green, backend regression scripts green, live end-to-end runs green).
+> Payments, KYC, and the financial ledger are **intentional mocks** — see
+> [Production gaps](#9-production-gaps--roadmap).
 
-This architecture leverages a modern full-stack web paradigm mapped to mobile environments, ensuring high velocity for a solo developer by maximizing code reuse across the Customer, Partner, and Admin platforms.
+---
 
-### Backend & Infrastructure (The Engine)
+## Table of contents
 
-- **Runtime & API:** Node.js and Express.js (TypeScript, strict) for scalable REST architecture.
-- **Real-Time Data:** Socket.io for low-latency live GPS tracking and bidirectional booking events.
-- **Relational Database:** PostgreSQL (managed via Prisma ORM) for highly structured transactional data like user profiles, booking ledgers, and financial records.
-- **In-Memory Store:** Redis for ephemeral state management, rate-limiting, and tracking rapidly shifting geocoordinates of available drivers.
-- **DevOps:** Docker and Docker Compose for containerized, consistent deployments.
+1. [What it does](#1-what-it-does)
+2. [Tech stack & why](#2-tech-stack--why)
+3. [Architecture](#3-architecture)
+4. [Monorepo file structure](#4-monorepo-file-structure)
+5. [Domain model & booking lifecycle](#5-domain-model--booking-lifecycle)
+6. [Real-time protocol (Socket.io)](#6-real-time-protocol-socketio)
+7. [REST API reference](#7-rest-api-reference)
+8. [Getting started](#8-getting-started)
+9. [Production gaps & roadmap](#9-production-gaps--roadmap)
+10. [Testing & verification](#10-testing--verification)
+11. [Configuration reference](#11-configuration-reference)
+12. [Troubleshooting](#12-troubleshooting)
 
-### Mobile Monorepo (The Interfaces)
+---
 
-- **Framework:** React Native with Expo.
-- **Language:** TypeScript for end-to-end type safety between the database schema and mobile UI.
-- **State Management:** Redux Toolkit or Zustand for handling global session and wallet states.
+## 1. What it does
 
-## 2. Monorepo File Structure
+**Customer app** (`apps/customer`) — Park / Ride / Trips / You tabs:
 
-To avoid duplicating code between the Rider app and the Driver app, the project utilizes an Expo Monorepo (powered by Yarn Workspaces).
+- **Park:** OSM map + radius search (5–100 km) for nearby parking, tappable list fallback,
+  space detail with driving route + ETA, hourly quote, booking, live accept status, mock pay.
+- **Ride:** 3-page wizard (Duration → Pickup → Review). Books **estimated hours** at the
+  fixed platform rate (₹150/hr). Pickup pinned on a real map or via GPS. Live status page
+  survives restarts and missed socket pushes (ledger restore + polling).
+- **Trip screen:** start-OTP display (read it to the driver), live timer + running bill,
+  live driver map with route, end-trip flow (type the driver's stop code), final bill, pay.
+- **Trips:** full booking history with cancel / track / pay. **You:** profile + stats + sign out.
 
-```plaintext
-smartdrive-workspace/
-├── apps/
-│   ├── customer/            # Expo React Native App: Finds parking, requests drivers
-│   ├── partner/             # Expo React Native App: Accepts rides, manages parking spaces
-│   └── admin-web/           # Next.js Dashboard: Verifications, commission analytics
-├── packages/
-│   ├── ui/                  # Shared React Native UI components (Buttons, Map Overlays)
-│   ├── api/                 # Shared Axios fetchers, Socket.io client configuration
-│   ├── types/               # Shared TypeScript schemas (e.g., BookingStatus interface)
-│   └── config/              # Centralized ESLint, Prettier, and tsconfig.json rules
-├── backend/                 # Node.js Server Environment
-│   ├── prisma/              # PostgreSQL schema & migrations
-│   ├── src/
-│   │   ├── controllers/     # REST logic (Auth, Payments)
-│   │   ├── sockets/         # Real-time tracking and dispatch events
-│   │   └── services/        # Third-party integrations (KYC, Maps, Stripe/Razorpay)
-│   └── package.json
-├── docker-compose.yml       # Spins up Node server, PostgreSQL, and Redis locally
-└── package.json             # Root workspace manager
+**Partner app** (`apps/partner`) — Requests / Ride / Spaces / Wallet / KYC / You tabs:
+
+- **Requests:** online/offline presence toggle, live inbox sorted **nearest-first** with
+  distance filter chips, per-request pickup address + drive route map, accept/reject
+  (accept auto-opens the Ride tab; races resolve to exactly one winner).
+- **Ride:** GPS broadcast toggle, Reached → start-OTP verify → live timer + running payout,
+  stop-OTP display, bill, force-close safety net.
+- **Spaces:** list spaces (GPS-pinned), pause/activate, repin to GPS, accept parking bookings.
+- **Wallet / KYC / You:** mock earnings, mock verification with progress stepper, profile.
+
+---
+
+## 2. Tech stack & why
+
+| Layer | Choice | Why this, not the alternative |
+|---|---|---|
+| Language (all) | **TypeScript (strict)** | One type system end-to-end: Prisma models → shared `packages/types` → both apps. Catches API drift at compile time instead of on-device. |
+| Backend framework | **Express 4** | Solo-dev velocity and a huge middleware ecosystem. Not NestJS (ceremony/DI overhead unjustified at MVP size) or Fastify (smaller plugin surface for auth/sockets). |
+| Real-time | **Socket.io 4** (server + client) | Rooms (`user:{id}`, `driver:{id}`, `booking:{id}`, `tracking:{id}`), acks (`emitWithAck`), and auto-reconnect out of the box. Raw WebSockets would mean hand-rolling all three. |
+| Database | **PostgreSQL 16 + Prisma 5** | Relational booking ledger needs transactions + migrations; Prisma gives type-safe queries and versioned migrations. Not raw SQL/Knex (no type safety) or Mongo (ledger wants relations/constraints). |
+| Ephemeral state | **Redis 7 (ioredis)** | GEO index for nearby-driver dispatch, `partners:online` presence set, last-known driver positions with TTL. Not in-Postgres (write-heavy GPS churn doesn't belong in the ledger). PostGIS is the planned Phase-A upgrade for scale. |
+| Auth | **JWT access (15 min) + refresh (7 d), bcryptjs** | Short-lived access limits breach blast radius; refresh keeps sessions alive. Mobile auto-refreshes + retries 401s transparently. Not server sessions (stateless, container-friendly). |
+| Money | **Integer paise everywhere** | No float rounding bugs. Commission in basis points (2000 = 20%). |
+| Mobile | **Expo SDK 57 + React Native 0.86 + React 19** | Managed workflow, one codebase for two apps, OTA updates later. Not bare RN (native build toil) or Flutter (team is TS/React). |
+| Maps | **OpenStreetMap tiles + Leaflet inside WebView** | Zero API keys, zero billing, zero native map modules — renders in **Expo Go**, dev builds, and web alike. `react-native-maps` stays only as a data-type source for `<Marker>` props. Google Maps would need keys, billing, and dev builds for every tester. |
+| Geocoding | **Nominatim → BigDataCloud fallback** | Street-level OSM names first; city-level fallback for networks that throttle Nominatim. Throttled to 1 req/s + cached per policy. |
+| Routing | **OSRM demo server** | Free driving routes + ETA, dashed straight-line fallback when unreachable. Self-host OSRM for production. |
+| HTTP client | **axios + interceptors** | Bearer injection + transparent 401→refresh→retry. `fetch` would need this hand-rolled per call. |
+| Monorepo | **npm workspaces** (`apps/*`, `packages/*`, `backend`) | Zero-config sharing for a solo dev. Not Turborepo/Nx (build caching unnecessary at this size). |
+| Testing | **Jest + jest-expo + React Native Testing Library** (mobile), **tsx scripts** (backend protocol) | Component behavior + real protocol runs against a live backend. |
+| Containers | **Docker + Compose, migrate-on-boot** | Postgres + Redis + backend with `prisma migrate deploy` on boot — fresh clones work with one command. |
+
+---
+
+## 3. Architecture
+
+```
+┌──────────────┐   HTTPS/REST + Socket.io   ┌─────────────────────────────┐
+│  Customer app │◄─────────────────────────►│                             │
+│  (Expo, TS)   │                             │  Backend (Node + Express)   │
+└──────────────┘                             │  ├─ REST  (/auth /bookings  │
+┌──────────────┐                             │  │   /pricing /spaces …)    │
+│  Partner app  │◄─────────────────────────►│  ├─ Socket.io (rooms, acks) │
+│  (Expo, TS)   │                             │  └─ Prisma ─► PostgreSQL   │
+└──────────────┘                             │  └─ ioredis ─► Redis (GEO,  │
+         ▲                                   │      presence, last-known) │
+         │ shared packages:                  └─────────────────────────────┘
+         │ types (domain + pure math) · api (axios+refresh) ·
+         │ ui (design system) · mobile (session/socket/geocode/map)
+         ▼
+   OSM tiles · Nominatim/BigDataCloud · OSRM (all free, keyless)
 ```
 
-## 3. The 20-Day MVP Development Roadmap
+Key invariants (enforced, tested):
 
-This highly condensed schedule focuses strictly on proving the core loop: A customer booking a driver, tracking them via GPS, and executing a mocked payment.
+- **One shared socket per app session.** Screens only attach/detach listeners; a singleton
+  (`packages/mobile/src/socket.ts`) refuses to destroy a healthy connection. (The old
+  reconnect-on-every-screen bug silently killed the partner inbox — regression-tested.)
+- **Fire-once dispatch + ledger convergence.** Socket pushes are fast path; every inbox
+  also polls the bookings ledger and re-syncs on tab focus, so a missed push can delay
+  but never hide a booking.
+- **Atomic accept.** `UPDATE … WHERE status='REQUESTED'` — simultaneous accepts serialize
+  in the DB: exactly one `200`, the rest `409 booking_not_requested` (proven with a
+  same-millisecond live race test).
+- **OTP recipient scoping.** Start codes are readable only by the customer, stop codes only
+  by the partner — scrubbed from shared socket payloads and per-viewer in REST, delivered
+  only to personal rooms (leak-tested live in both directions).
+- **Money math parity.** Timer billing (`computeTimerBill` backend ↔ `runningCostPaise`
+  client mirror) and haversine distance share one implementation each, unit-tested.
 
-### Days 1-4: Database & Core APIs
+---
 
-- Initialize PostgreSQL and write Prisma schemas for Users, Vehicles, and Bookings.
-- Build JWT-based authentication endpoints.
-- Implement basic REST endpoints to handle the 20%-25% platform commission and 75%-80% partner split logic.
+## 4. Monorepo file structure
 
-**Day-by-day:**
+```
+ParkPilot/
+├── apps/
+│   ├── customer/               # Expo app: Park / Ride / Trips / You
+│   │   ├── App.tsx             # Shell: session gate, ONE socket, tabs (mounted, display:none),
+│   │   │                       # overlays (parking/tracking), API_URL ← edit for your backend
+│   │   ├── app.config.js       # Expo config (dynamic: optional GOOGLE_MAPS_API_KEY)
+│   │   └── src/screens/        # MapScreen(.web), BookRideScreen, ParkingScreen,
+│   │                           # TrackingScreen, TripsScreen, ProfileScreen
+│   └── partner/                # Expo app: Requests / Ride / Spaces / Wallet / KYC / You
+│       ├── App.tsx             # Shell: inbox merge + presence re-register + polling
+│       └── src/screens/        # RequestsScreen, RideScreen, HostScreen,
+│                               # WalletScreen, KycScreen, ProfileScreen
+├── packages/
+│   ├── types/src/index.ts      # Roles, Booking, quotes, haversineKm, timer-bill mirror,
+│   │                           # summarizeBookings — the shared source of truth
+│   ├── api/src/                # axios client (bearer + 401→refresh→retry), auth, bookings
+│   │                           # (incl. OTP handshake), spaces/host, errors
+│   ├── ui/src/                 # Design system: theme, Button (press physics, variants,
+│   │                           # loading), Card, Field, StatusPill, Avatar/Stat, TabBar,
+│   │                           # SegmentedControl, OtpInput (shake), Motion (FadeIn,
+│   │                           # EmptyState, Skeleton), Chrome (Screen/AppHeader),
+│   │                           # ListRow/SectionLabel/Divider, Wizard (stepped flows)
+│   ├── mobile/src/             # SessionProvider (refresh, 401 handler), socket singleton,
+│   │                           # storage, Login/Register screens,
+│   │                           # map/: SafeMap (OSM WebView), osmTemplate, geocode
+│   └── config/                 # Shared base tsconfig
+├── backend/
+│   ├── prisma/schema.prisma    # User, Vehicle, ParkingSpace, Booking (+timer/OTP fields)
+│   ├── prisma/migrations/      # Versioned migrations (incl. driver_timer_otp)
+│   ├── src/
+│   │   ├── routes/             # auth, bookings, pricing, spaces, vehicles, wallet
+│   │   ├── controllers/        # REST handlers + per-viewer OTP scrubbing + OTP fan-out
+│   │   ├── services/           # bookings (accept race guard, OTP handshake, timer bill),
+│   │   │                       # pricing (quotes, splits), spaces (haversine nearby)
+│   │   ├── sockets/            # index (auth, rooms, auto-join, presence reset),
+│   │   │                       # dispatch (geo/presence fan-out, accept/reject),
+│   │   │                       # location (GPS ingest, tracking rooms, online toggle)
+│   │   ├── lib/                # prisma, redis, tokens (JWT)
+│   │   └── middleware/         # requireAuth, async handler
+│   └── scripts/                # socket-test, location-test, dispatch-test,
+│                               # presence-test, simulate-driver (tsx, live-backend)
+├── __tests__/                  # Jest suite (9 files: auth, screens, inbox, restore,
+│                               # distance, timer bill, geocode, OSM template, summary)
+├── docs/                       # FIELD_TEST.md (2-phone runbook), MAPS_SETUP.md (OSM)
+├── docker-compose.yml          # postgres + redis + backend (migrate-on-boot)
+└── jest.config.js              # jest-expo preset
+```
 
-- **Day 1 — Repo & Infra ✅ DONE:** Init `backend/`, `docker-compose.yml` (Node, PostgreSQL, Redis), Prisma setup. Done when `docker compose up` runs clean.
-- **Day 2 — Auth ✅ DONE:** `Users` schema + JWT register/login/refresh + bcrypt. Done when tested via Postman.
-- **Day 3 — Domain Schemas ✅ DONE:** `Vehicles`, `ParkingSpaces`, `Bookings` + commission split (20-25% / 75-80%). Done when migrations pass.
-- **Day 4 — REST Core ✅ DONE:** `POST /bookings`, `GET /pricing`, `GET /wallet` (mock). Done when full booking CRUD works without realtime.
+Generated/secret paths (gitignored, never commit): `apps/*/android|ios`, `apps/*/.expo`,
+`dist/`, `node_modules/`, any `.env`, keystores, `google-services.json`.
 
-### Days 5-8: Real-Time Engine
+---
 
-- Set up the Node.js Socket.io server.
-- Create socket events for `DRIVER_LOCATION_UPDATE` and `CUSTOMER_LOCATION_SUBSCRIBE`.
-- Implement a mock Node.js script to simulate a moving driver sending lat/lng data.
+## 5. Domain model & booking lifecycle
 
-**Day-by-day:**
+### Timer model (DRIVER) — the core loop
 
-- **Day 5 — Sockets Setup ✅ DONE:** Socket.io server + auth middleware + rooms (`driver:{id}`, `booking:{id}`). Done when client connects.
-- **Day 6 — Location Stream ✅ DONE:** `DRIVER_LOCATION_UPDATE` -> Redis + `CUSTOMER_LOCATION_SUBSCRIBE` broadcast. Done when location flows end-to-end.
-- **Day 7 — Dispatch ✅ DONE:** Nearby driver query + `BOOKING_REQUEST`, `BOOKING_ACCEPT/REJECT`. Done when request reaches driver.
-- **Day 8 — Simulator ✅ DONE:** Mock driver script sending lat/lng. Done when map shows moving point with <1s latency.
+Fixed platform rate **₹150/hr**. Customer books **estimated hours**; the final bill uses
+**actual elapsed time**: `billed = max(60min, ceil(seconds/60))`, split by the booking's
+`commissionBps` (20–25%).
 
-### Days 9-14: Monorepo Setup & Customer App
+```
+REQUESTED ──accept──▶ ACCEPTED ──start OTP verify──▶ ONGOING ──stop OTP verify──▶ COMPLETED ──pay──▶ paid
+   │                    │                                │
+   └──── customer ──────┴──── cancel ───────────────────┘
+        (REQUESTED or ACCEPTED only; terminal states immutable)
+```
 
-- Initialize the Expo Workspace and build the `packages/ui` library.
-- Integrate `react-native-maps` inside the `apps/customer` directory.
-- Build the UI to display vehicle pricing (₹8/KM for drivers, ₹60-₹100/hr for car parking).
+**OTP handshake** (in-app display, 4-digit, 10-min TTL, single-use, regenerable):
 
-**Day-by-day:**
+1. Partner at the customer taps *Reached — send code* → server mints **start OTP** →
+   emitted **only** to the customer's personal room + readable only in the customer's
+   booking payloads.
+2. Customer reads it aloud → partner types it → `start-verify` → `ONGOING`, `startedAt` set.
+3. Customer taps *End trip* → server mints **stop OTP** → emitted **only** to the
+   partner's personal room + readable only in the partner's payloads.
+4. Partner reads it aloud → customer types it → `stop-verify` → server computes
+   `billedMinutes`/`amountPaise`/splits from `startedAt→endedAt` → `COMPLETED` → pay.
 
-- **Day 9 — Monorepo Init ✅ DONE:** Yarn Workspaces `apps/customer`, `packages/ui,api,types,config` + ESLint/Prettier/tsconfig. Done when `yarn customer start` runs.
-- **Day 10 — Auth UI ✅ DONE:** Navigation + auth screens + `packages/api` Axios integration. Done when login persists session.
-- **Day 11 — Maps ✅ DONE:** `react-native-maps` + permissions + parking/driver list UI. Done when maps render.
-- **Day 12 — Booking Flow ✅ DONE:** Request driver UI + pricing display + socket subscribe. Done when customer can request a driver.
-- **Day 13 — Tracking & Pay ✅ DONE:** Live tracking screen + mock payment. Done when customer loop is closable.
-- **Day 14 — SharedPolish ✅ DONE:** Harden `packages/ui` + `types/BookingStatus`. Done when no duplicated components.
+### Parking model (PARKING)
 
-### Days 15-20: Partner App & End-to-End Testing
+Quote (`price/hr × hours`) → `REQUESTED` → **space owner only** may accept
+(`403 only_space_owner_accepts` otherwise; hosts read their bookings via space ownership)
+→ pay. Paused/unavailable spaces reject with `space_not_available`.
 
-- Build the `apps/partner` interface focusing on the active ride dashboard and earnings wallet.
-- Connect the Partner app to the device's native geolocation API to broadcast real-world coordinates.
-- Execute full physical tests using two separate smartphones to validate live map updates.
+### Dispatch (how a request finds partners)
 
-**Day-by-day:**
+1. DRIVER with pickup coords → fresh-GPS partners within 5 km (Redis GEO + 90 s freshness
+   sweep), falling back to `partners:online` presence set; without coords → presence set → live drivers.
+2. Going online **redelivers** missed open DRIVER + own PARKING requests (dispatch is
+   fire-once; this + client polling closes the gap).
+3. Presence is per-connection (toggle-gated, cleared on disconnect, **reset on server boot**
+   so restarts can't leave ghost-online drivers), and re-registers automatically on socket reconnect.
 
-- **Day 15 — Partner Shell ✅ DONE:** `apps/partner` + auth reuse + KYC mock screen. Done when partner login works.
-- **Day 16 — Requests ✅ DONE:** Online/offline toggle + incoming request + accept/reject via socket. Done when it receives Day 12 requests.
-- **Day 17 — Active Ride ✅ DONE:** Ride dashboard + `expo-location` broadcast + earnings wallet UI. Done when real GPS streams.
-- **Day 18 — Host Flow ✅ DONE:** List space, availability, bookings management. Done when P2P parking CRUD works.
-- **Day 19 — Integration ✅ DONE:** Docker full-stack integration, both apps vs backend, fix CORS/socket/auth bugs.
-- **Day 20 — Field Test ✅ DONE (runbook):** 2-phone physical test, bugfix, demo video. Note: `admin-web/` deferred to post-MVP.
+---
 
-## 4. Retrospective: What We Accomplished in 20 Days
+## 6. Real-time protocol (Socket.io)
 
-At the end of this sprint, the MVP successfully demonstrates the technological viability of the concept to investors:
+Rooms: `user:{id}` (always), `driver:{id}` (partners), `booking:{id}` (explicit join +
+server auto-join of live bookings), `tracking:{driverId}` (customer subscribes).
 
-- **Functional Booking Loop:** Customers can request a driver, and nearby partners receive instant socket-based notifications.
-- **Live Tracking:** The map smoothly renders moving driver coordinates with sub-second latency.
-- **Modular Foundation:** The monorepo structure guarantees that any UI updates to shared components (like forms or buttons) instantly apply to both mobile apps.
-- **Containerized Backend:** The Node.js and Redis logic is fully encapsulated in Docker, ready for basic cloud deployment.
+| Direction | Event | Payload / meaning |
+|---|---|---|
+| C→S | `booking:join` / `booking:leave` | `{ bookingId }` — join a booking room (party-checked) |
+| P→S | `partner:online` / `partner:offline` | presence toggle (acked; online triggers redelivery) |
+| P→S | `driver:location` | `{ lat, lng }` (~0.5 Hz throttled) → Redis GEO + `driver:moved` fan-out |
+| C→S | `tracking:subscribe` | `{ driverId }` → joins tracking room, returns last-known fix |
+| P→S | `booking:accept` / `booking:reject` | accept is atomic (409 on race); reject = per-partner dismissal, status untouched |
+| S→C | `booking:updated`, `booking:accepted`, `booking:rejected` | status fan-out (OTP fields scrubbed) |
+| S→C | `booking:start-otp` | `{ bookingId, otp, expiresAt }` — **customer room only** |
+| S→P | `booking:stop-otp` | `{ bookingId, otp, expiresAt }` — **partner room only** |
+| S→C | `driver:moved` | `{ driverId, lat, lng, at }` live dots |
 
-### Verified this sprint (executed, not estimated)
+---
 
-- Backend: auth, booking CRUD + transitions, pricing/commission math, nearby
-  dispatch (geo-fenced — far drivers get nothing), Redis GEO location stream,
-  socket accept/reject with room delivery, mock pay/KYC, host space/vehicle
-  CRUD. Regression scripts: `socket-test`, `location-test`, `dispatch-test`,
-  `simulate-driver` (0% loss, p95 ~2-3ms local) — all green on a fresh
-  `docker compose down -v` rebuild with migrate-on-boot.
-- Mobile: `tsc --noEmit` green across `types/api/ui/mobile/customer/partner`.
-  Customer (auth → map → ride/parking booking → tracking → mock pay) and
-  Partner (auth gate → requests inbox → GPS ride → wallet, KYC mock, host
-  spaces) screens are implemented against the verified API/socket protocol.
+## 7. REST API reference
 
-> **Note on Limitations:** This is a prototype. It lacks background battery management for drivers, handles network disconnects poorly, uses unoptimized geographic queries, and relies on mock payment/KYC data.
-> Two items remain physical-world work: `expo start` on-device runs and the
-> Day 20 two-phone field test — runbook in `docs/FIELD_TEST.md`. `admin-web/`
-> is deferred to post-MVP.
+Base URL = `API_URL` in `apps/*/App.tsx`. Auth: `Authorization: Bearer <accessToken>`
+(15 min TTL; clients auto-refresh via `/auth/refresh` and retry once on 401).
 
-## 5. Post-20-Day Production Strategy (The Path to Scale)
+| Method & path | Who | Body / query → result |
+|---|---|---|
+| `POST /auth/register` | public | `{ name, email, password, role? }` → user + tokens |
+| `POST /auth/login` | public | `{ email, password }` → user + tokens |
+| `POST /auth/refresh` | public | `{ refreshToken }` → fresh tokens |
+| `GET /auth/me` | any | → current user |
+| `PATCH /auth/kyc` | any | mock submit → `kycStatus: SUBMITTED` |
+| `GET /pricing/quote?type=driver_hours&hours=` | public | estimate at fixed ₹150/hr + splits |
+| `GET /pricing/quote?type=parking…` | public | `{ pricePerHourPaise, hours }` → quote |
+| `POST /bookings` | customer | DRIVER `{ hours, pickupLat?, pickupLng? }` · PARKING `{ spaceId, hours }` → `{ booking, notified[] }` |
+| `GET /bookings` · `GET /bookings/:id` | party | own ledger (customer ∪ partner ∪ space-owner) |
+| `PATCH /bookings/:id/accept` | partner | atomic first-wins; parking restricted to owner |
+| `POST /bookings/:id/start-otp` | assigned partner | mints start code (customer-visible only) |
+| `POST /bookings/:id/start-verify` | assigned partner | `{ otp }` → `ONGOING` + `startedAt` |
+| `POST /bookings/:id/stop-otp` | customer | mints stop code (partner-visible only) |
+| `POST /bookings/:id/stop-verify` | customer | `{ otp }` → `COMPLETED` + final timer bill |
+| `PATCH /bookings/:id/cancel` | customer | REQUESTED/ACCEPTED → CANCELLED |
+| `PATCH /bookings/:id/complete` | partner | stuck-trip safety net (no timer bill) |
+| `PATCH /bookings/:id/pay` | customer | mock payment → `COMPLETED` (payable once ACCEPTED+) |
+| `GET /spaces/nearby?lat&lng&radiusKm` | public | active spaces sorted nearest-first (+`distanceKm`) |
+| `POST /spaces` · `GET /spaces/mine` · `PATCH /spaces/:id` | partner | CRUD incl. GPS pin + repin (`lat/lng`) + pause |
+| `GET /wallet` | any | mock `{ earned, pending }` (+ spent for customers) |
 
-To transition from a prototype to a consumer-ready enterprise application, development must shift toward system resilience, security, and market-specific operational logistics.
+---
 
-### Phase A: Architecture Hardening & Geospatial Upgrades
+## 8. Getting started
 
-- **Migrate to PostGIS:** Standard SQL distance queries will crash the database at scale. Implement PostgreSQL's PostGIS extension to handle heavy geospatial indexing and hyper-fast radius queries for nearby drivers and parking spaces.
-- **Implement Distributed Locking:** To prevent two users from booking the same parking space at the exact same millisecond, implement Redis-based distributed locks on checkout operations.
-- **Native Background Services:** Replace standard Expo location trackers with robust native background tasks (via `expo-location` background permissions). The Partner App must continue broadcasting GPS data even when the phone screen is locked or the driver switches to another app.
+### Prereqs
 
-### Phase B: Security, KYC & Financial Ledgers
+- Node ≥ 20, Docker + Compose, Expo Go app on test phones (dev builds only for native maps).
+- Clone, then copy env: `cp .env.example .env` and set `POSTGRES_PASSWORD`,
+  `JWT_SECRET` (≥32 random chars). Never commit `.env`.
 
-- **Automated Verification Integrations:** Connect third-party APIs (like Digio or Hyperverge) to handle the mandatory Aadhaar-based KYC checks, driver's license validations, and police verification workflows natively within the Partner App.
-- **Double-Entry Financial Ledger:** Transition from simple integer wallet balances to an immutable double-entry ledger. This ensures that the automated partner payout schedule (every 3 to 4 days via UPI/NEFT) is perfectly reconciled with the 20-25% platform take-rate without risk of race conditions.
-- **Space Authentication Tools:** Build geo-tagged photo upload and geofencing flows so property owners can cryptographically prove the boundaries of their listed P2P parking spaces.
+### Backend (one command)
 
-### Phase C: Strategic Business Rollout
+```bash
+docker compose up --build        # postgres + redis + backend (migrates on boot)
+curl http://localhost:4000/health
+```
 
-- **High-Density Pilot Launch (Months 1-6):** Limit the live deployment strictly to high-density metro corridors like Delhi NCR, Bengaluru, or Mumbai, ensuring enough liquidity (supply of drivers/spaces) to guarantee fast booking times.
-- **B2B and Corporate Integration (Months 6-12):** Expand the Admin console to support corporate bulk-booking features, partnering with tech parks for unutilized commercial parking.
-- **Tier 2 Expansion & EV Integration (Months 12-24):** Refactor the database schema to support EV charging attributes (plug types, kilowatt speed) so hosts can monetize charging alongside parking space, rolling this out to Tier-2 cities.
+Local dev instead: `npm run dev:backend -w backend` (needs local Postgres/Redis via `DATABASE_URL`/`REDIS_URL`).
+Useful: `npm run typecheck -w backend`, `npm run build -w backend`,
+`npm run prisma:migrate -w backend`.
+
+### Mobile apps (two terminals)
+
+```bash
+cd apps/customer && npx expo start            # phone 1 (customer)
+cd apps/partner  && npx expo start --port 8082 # phone 2 (partner)
+```
+
+- Same WiFi for laptop + phones, or `npx expo start --tunnel`.
+- **Backend reachability:** set `API_URL` in both `apps/*/App.tsx` — your LAN
+  (`http://<lan-ip>:4000`) or a tunnel (`cloudflared tunnel --url http://localhost:4000`).
+  Tunnel hosts are ephemeral: if login suddenly says *cannot reach the server*, re-check
+  `<API_URL>/health` in the phone browser first. Do not commit LAN IPs/keys.
+- Maps need **no key** (OSM). Expo Go shows everything except native map tiles are
+  replaced by the OSM WebView (works in Go). For native tiles use a dev build:
+  `npx expo run:android` (see `docs/MAPS_SETUP.md`).
+
+### Two-phone smoke test (happy path)
+
+Partner: register (PARTNER) → Spaces → list a GPS-pinned space → Requests → Go online.
+Customer: register → Park → open the space → hours → Review → Confirm → host Accepts → Pay.
+Ride: hours → GPS pickup → Review → Confirm → partner Accepts → broadcast → start code →
+verify → timer → End → stop code → confirm → bill → pay. Full script: `docs/FIELD_TEST.md`.
+
+---
+
+## 9. Production gaps & roadmap
+
+Deliberate MVP simplifications (all labeled `mock`/Phase in code):
+
+- **Payments/KYC** are state flips, not providers (Stripe/Razorpay, Digio/Hyperverge).
+- **Ledger** is mutable booking rows, not an immutable double-entry ledger.
+- **Push notifications** don't exist — convergence relies on sockets + polling while open.
+- **PostGIS + distributed locks** replace Haversine/Redis-GEO + `updateMany` guards at scale.
+- Free-tier map services (OSM tiles, Nominatim, OSRM demo) need provider SLAs in prod.
+- Background GPS, battery management, and reconnect hardening are minimal.
+
+---
+
+## 10. Testing & verification
+
+```bash
+npx jest __tests__                 # 9 suites: auth errors, login/register screens,
+                                   # requests inbox, ride restore, distance, timer bill,
+                                   # geocode+fallback, OSM template, trip summary
+BASE=http://localhost:4000 npx tsx backend/scripts/socket-test.ts
+BASE=http://localhost:4000 npx tsx backend/scripts/presence-test.ts
+BASE=http://localhost:4000 npx tsx backend/scripts/dispatch-test.ts
+BASE=http://localhost:4000 npx tsx backend/scripts/location-test.ts
+```
+
+Also verified live (not just in CI): same-millisecond double-accept → exactly one winner;
+OTP leak test in both directions (socket + REST); full timer loop incl. first-hour minimum;
+repin → 5 km visibility; tunnel login path; rendered Leaflet JS syntax-checked.
+
+Typecheck everything: `npm run typecheck -w backend` plus
+`npx tsc --noEmit -p {apps/customer,apps/partner,packages/{ui,mobile,api,types}}/tsconfig.json`.
+
+---
+
+## 11. Configuration reference
+
+| Key / place | Purpose | Notes |
+|---|---|---|
+| `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` (`.env`) | backend wiring | required; see `.env.example` |
+| `API_URL` (`apps/*/App.tsx`) | backend base for both apps | tunnel host or LAN IP; ephemeral — never commit secrets here |
+| `GOOGLE_MAPS_API_KEY` (env, build-time) | optional legacy Google tiles | unused while maps render OSM; read by `app.config.js` only if set |
+| `packages` (`com.parkpilot.customer/.partner`) | Android identity | needed for key restriction + builds |
+
+---
+
+## 12. Troubleshooting
+
+| Symptom | Most likely cause → fix |
+|---|---|
+| *Cannot reach the server* at login | Dead tunnel host → open `<API_URL>/health` in the phone browser; restart tunnel, paste new host into both `App.tsx`, reload Expo |
+| Booking/actions 401 after ~15 min | Old bundle without auto-refresh → reload the app (current code refreshes + retries) |
+| Request accepted but customer still REQUESTED | Stale card → it self-heals: restore-on-open + 8 s poll + tab-focus sync (pre-refresh bundles lack this — reload) |
+| Space invisible nearby | Pinned far away / paused / radius too small → Spaces → *Repin to GPS*, widen radius, *Search this area* |
+| Map blank/black | Needs internet (tiles+CDN live); in dev builds without OSM fallback check `docs/MAPS_SETUP.md` |
+| Only coords, no addresses | Offline geocoder or no OSM data → add internet; names upgrade in place ~1–2 s after coords appear |
+| Two partners accept | By design exactly one wins (`409`); loser sees *"already taken"* and the card dismisses |
