@@ -72,7 +72,8 @@ interface Tokens {
   c.socket.close();
   d.socket.close();
   c2.socket.close();
-  await prisma.user.deleteMany();
+  // cleanup: ONLY rows this test created (never touch other users)
+  await prisma.user.deleteMany({ where: { id: { in: [cus.user.id, par.user.id] } } });
   await prisma.$disconnect();
   const r = getRedis();
   await r.del('drivers:live', `driver:meta:${driverId}`);

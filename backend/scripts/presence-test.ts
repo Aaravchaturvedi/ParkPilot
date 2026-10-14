@@ -69,8 +69,10 @@ interface Created {
   if (b.notified.length !== 0) throw new Error('offline partner was notified');
 
   d.close();
-  await prisma.booking.deleteMany();
-  await prisma.user.deleteMany();
+  // cleanup: ONLY rows this test created (never touch other users)
+  const ids = [par.user.id, cus.user.id];
+  await prisma.booking.deleteMany({ where: { OR: [{ customerId: { in: ids } }, { partnerId: { in: ids } }] } });
+  await prisma.user.deleteMany({ where: { id: { in: ids } } });
   await prisma.$disconnect();
   const r = getRedis();
   await r.del('partners:online');

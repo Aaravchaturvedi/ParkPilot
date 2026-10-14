@@ -75,9 +75,10 @@ interface Tokens {
   socket.close();
   outsider.socket.close();
 
-  // cleanup
-  await prisma.booking.deleteMany();
-  await prisma.user.deleteMany();
+  // cleanup: ONLY rows this test created (never touch other users)
+  const ids = [cus.json, par.json, outsiderReg.json].map((j) => (j as unknown as { user: { id: string } }).user.id);
+  await prisma.booking.deleteMany({ where: { OR: [{ customerId: { in: ids } }, { partnerId: { in: ids } }] } });
+  await prisma.user.deleteMany({ where: { id: { in: ids } } });
   await prisma.$disconnect();
   console.log('DAY5 SOCKET TEST PASS');
 })().catch((e: unknown) => {

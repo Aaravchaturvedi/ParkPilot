@@ -73,7 +73,8 @@ interface Reg {
 
   driver.close();
   watcher.close();
-  await prisma.user.deleteMany();
+  // cleanup: ONLY rows this test created (never touch other users)
+  await prisma.user.deleteMany({ where: { id: { in: [par.user.id, cus.user.id] } } });
   await prisma.$disconnect();
   const r = getRedis();
   await r.del('drivers:live', `driver:meta:${par.user.id}`);

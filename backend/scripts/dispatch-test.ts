@@ -90,8 +90,10 @@ interface Reg {
   c.socket.close();
   n.socket.close();
   f.socket.close();
-  await prisma.booking.deleteMany();
-  await prisma.user.deleteMany();
+  // cleanup: ONLY rows this test created (never touch other users)
+  const ids = [cus.user.id, near.user.id, far.user.id];
+  await prisma.booking.deleteMany({ where: { OR: [{ customerId: { in: ids } }, { partnerId: { in: ids } }] } });
+  await prisma.user.deleteMany({ where: { id: { in: ids } } });
   await prisma.$disconnect();
   const r = getRedis();
   for (const u of [near.user.id, far.user.id]) await r.del(`driver:meta:${u}`);
