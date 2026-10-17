@@ -14,7 +14,7 @@ import type { Booking, ParkingSpace } from '../../packages/types/src';
 
 // Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
 // on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://raleigh-indiana-grammar-achievement.trycloudflare.com';
+const API_URL = 'https://bin-widespread-cultures-eyes.trycloudflare.com';
 
 type Tab = 'map' | 'ride' | 'trips' | 'you';
 
