@@ -19,15 +19,14 @@ curl http://192.168.1.5:4000/health   # replace with YOUR ip
 
 ## 1. Point both apps at the laptop
 
-In `apps/customer/App.tsx` and `apps/partner/App.tsx`, set:
+No edit needed on a shared WiFi: the apps derive the laptop's IP from Metro
+(`resolveApiUrl()` in `packages/mobile/src/config.ts`). Start each with
+`npx expo start` (from its app dir) and open via Expo Go, or
+`npx expo run:android` / `run:ios` for dev builds (needed for background
+location later — Phase A).
 
-```ts
-const API_URL = 'http://192.168.1.5:4000'; // YOUR lan ip, same WiFi
-```
-
-Start each with `npx expo start` (from its app dir) and open via Expo Go,
-or `npx expo run:android` / `run:ios` for dev builds (needed for
-background location later — Phase A).
+If phone and laptop are on different networks, from the repo root run
+`npm run dev:tunnel`, then restart both Expo servers.
 
 ## 2. The loop (Phone A = customer, Phone B = partner)
 

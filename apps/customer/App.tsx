@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SessionProvider, useSession, LoginScreen, RegisterScreen } from '../../packages/mobile/src';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SessionProvider, useSession, LoginScreen, RegisterScreen, resolveApiUrl } from '../../packages/mobile/src';
 import { ensureSocket, disconnectSocket } from '../../packages/mobile/src/socket';
 import { MapScreen } from './src/screens/MapScreen';
 import { BookRideScreen } from './src/screens/BookRideScreen';
@@ -10,11 +11,13 @@ import { TrackingScreen } from './src/screens/TrackingScreen';
 import { TripsScreen } from './src/screens/TripsScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { TabBar } from '../../packages/ui/src';
+import { Ionicons } from '@expo/vector-icons';
 import type { Booking, ParkingSpace } from '../../packages/types/src';
 
-// Backend URL. Phones off-LAN need the public tunnel URL (changes on reboot);
-// on home WiFi use 'http://192.168.1.6:4000'. Do NOT commit a LAN IP.
-const API_URL = 'https://bin-widespread-cultures-eyes.trycloudflare.com';
+// Backend URL. Resolves to the LAN dev host automatically; set
+// EXPO_PUBLIC_API_URL in .env.local when using a cloudflared tunnel (see
+// packages/mobile/src/config.ts). Never hardcode an ephemeral tunnel here.
+const API_URL = resolveApiUrl();
 
 type Tab = 'map' | 'ride' | 'trips' | 'you';
 
@@ -34,8 +37,20 @@ function Shell(): React.JSX.Element {
   useEffect(() => {
     if (!token || !user || (user.role !== 'CUSTOMER' && user.role !== 'ADMIN')) return;
     const s = ensureSocket(API_URL, token);
-    const onUpdate = (): void => setLastUpdate(Date.now());
-    const onAccepted = (): void => setLastUpdate(Date.now());
+    const onUpdate = (evt?: { booking?: Booking }): void => {
+      setLastUpdate(Date.now());
+      const b = evt?.booking;
+      if (b?.status === 'ACCEPTED' && b.id) {
+        setTrackingId((curr) => curr ?? b.id);
+      }
+    };
+    const onAccepted = (evt?: { booking?: Booking }): void => {
+      setLastUpdate(Date.now());
+      const b = evt?.booking;
+      if (b?.id) {
+        setTrackingId(b.id);
+      }
+    };
     const onRejected = (): void => setLastUpdate(Date.now());
     s.on('booking:updated', onUpdate);
     s.on('booking:accepted', onAccepted);
@@ -57,11 +72,7 @@ function Shell(): React.JSX.Element {
   };
 
   if (!ready) {
-    return (
-      <View style={styles.center}>
-        <Text>Loading…</Text>
-      </View>
-    );
+    return <View style={styles.splashHolder} />;
   }
   if (!user) {
     return mode === 'login' ? (
@@ -101,7 +112,15 @@ function Shell(): React.JSX.Element {
   return (
     <View style={styles.mapRoot}>
       {trackingId ? (
-        <TrackingScreen apiURL={API_URL} token={token} bookingId={trackingId} onDone={() => setTrackingId(null)} />
+        <TrackingScreen
+          apiURL={API_URL}
+          token={token}
+          bookingId={trackingId}
+          onDone={() => {
+            setTrackingId(null);
+            setTab('ride');
+          }}
+        />
       ) : space ? (
         <ParkingScreen space={space} apiURL={API_URL} token={token} onDone={() => setSpace(null)} />
       ) : (
@@ -132,35 +151,54 @@ function Shell(): React.JSX.Element {
       )}
       <TabBar
         items={[
-          { key: 'map', label: 'Park' },
-          { key: 'ride', label: 'Ride' },
-          { key: 'trips', label: 'Trips' },
-          { key: 'you', label: 'You' },
+          {
+            key: 'map',
+            label: 'Park',
+            icon: ({ color, size }) => <Ionicons name="navigate-outline" size={size} color={color} />,
+          },
+          {
+            key: 'ride',
+            label: 'Ride',
+            icon: ({ color, size }) => <Ionicons name="car-outline" size={size} color={color} />,
+          },
+          {
+            key: 'trips',
+            label: 'Trips',
+            icon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />,
+          },
+          {
+            key: 'you',
+            label: 'You',
+            icon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
+          },
         ]}
         activeKey={showingOverlay ? '' : tab}
         onPress={(k) => goTab(k as Tab)}
       />
-      <StatusBar />
     </View>
   );
 }
 
 export default function App(): React.JSX.Element {
   return (
-    <SessionProvider baseURL={API_URL}>
-      <Shell />
-    </SessionProvider>
+    <SafeAreaProvider>
+      <StatusBar style="dark" translucent backgroundColor="transparent" />
+      <SessionProvider baseURL={API_URL}>
+        <Shell />
+      </SessionProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  mapRoot: { flex: 1 },
-  tabHost: { flex: 1 },
-  tabVisible: { flex: 1 },
+  splashHolder: { flex: 1, backgroundColor: '#ffffff', width: '100%' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, backgroundColor: '#ffffff' },
+  mapRoot: { flex: 1, width: '100%', backgroundColor: '#ffffff' },
+  tabHost: { flex: 1, width: '100%' },
+  tabVisible: { flex: 1, width: '100%' },
   tabHidden: { flex: 1, display: 'none' },
   title: { fontSize: 22, fontWeight: '700' },
-  link: { color: '#2563eb', textAlign: 'center', padding: 12 },
+  link: { color: '#09090b', textAlign: 'center', padding: 12, fontWeight: '600' },
 });
 
 export type { Booking };

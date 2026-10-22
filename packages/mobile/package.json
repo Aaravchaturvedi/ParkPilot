@@ -8,6 +8,7 @@
     "react": "*",
     "react-native": "*",
     "expo-secure-store": "*",
+    "react-native-safe-area-context": "*",
     "socket.io-client": "*"
   }
 }

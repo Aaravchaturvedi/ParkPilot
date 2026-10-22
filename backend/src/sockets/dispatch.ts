@@ -29,6 +29,18 @@ export async function dispatchNewBooking(io: Server | undefined, booking: FullBo
     ids = (await onlinePartnerIds()).slice(0, 10);
     if (ids.length === 0) ids = await liveDriverIds(10);
   }
+  if (ids.length > 0) {
+    const busyDrivers = await prisma.booking.findMany({
+      where: {
+        partnerId: { in: ids },
+        type: 'DRIVER',
+        status: { in: ['ACCEPTED', 'ONGOING'] },
+      },
+      select: { partnerId: true },
+    });
+    const busySet = new Set(busyDrivers.map((b) => b.partnerId).filter(Boolean));
+    ids = ids.filter((id) => !busySet.has(id));
+  }
   for (const id of ids) io.to(driverRoom(id)).emit('booking:request', { booking });
   return ids;
 }
@@ -46,6 +58,7 @@ export function registerDispatchHandlers(io: Server, socket: Socket): void {
     io.to(bookingRoom(booking.id)).emit('booking:updated', payload);
     io.to(userRoom(booking.customerId)).emit('booking:updated', payload);
     if (booking.partnerId) io.to(userRoom(booking.partnerId)).emit('booking:updated', payload);
+    io.to('partners').emit('booking:updated', payload);
   };
 
   socket.on('booking:accept', async ({ bookingId }: { bookingId?: string } = {}, ack?: Ack) => {

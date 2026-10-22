@@ -48,6 +48,7 @@ export function pageHtml(region: SafeMapRegion, markers: MarkerSpec[], route?: R
     `function post(){var c=map.getCenter(),z=map.getZoom(),d=360/Math.pow(2,z);` +
     `window.ReactNativeWebView.postMessage(JSON.stringify({kind:'region',latitude:c.lat,longitude:c.lng,latitudeDelta:d,longitudeDelta:d}));}` +
     `map.on('moveend',post);map.on('zoomend',post);` +
+    `map.on('click',function(e){if(!e||!e.latlng)return;window.ReactNativeWebView.postMessage(JSON.stringify({kind:'click',latitude:e.latlng.lat,longitude:e.latlng.lng}));});` +
     `var routeLine=null;` +
     `function postRoute(km,min){window.ReactNativeWebView.postMessage(JSON.stringify({kind:'route',distanceKm:km,durationMin:min}));}` +
     `function drawRoute(fr,to){` +
@@ -55,13 +56,13 @@ export function pageHtml(region: SafeMapRegion, markers: MarkerSpec[], route?: R
     `if(!fr||!to)return;` +
     `var bounds=L.latLngBounds([[fr.latitude,fr.longitude],[to.latitude,to.longitude]]);` +
     `map.fitBounds(bounds,{padding:[36,36]});` +
-    `routeLine=L.polyline([[fr.latitude,fr.longitude],[to.latitude,to.longitude]],{color:'#4f46e5',weight:4,dashArray:'8 8'}).addTo(map);` +
+    `routeLine=L.polyline([[fr.latitude,fr.longitude],[to.latitude,to.longitude]],{color:'#000000',weight:4,dashArray:'8 8'}).addTo(map);` +
     `fetch('https://router.project-osrm.org/route/v1/driving/'+fr.longitude+','+fr.latitude+';'+to.longitude+','+to.latitude+'?overview=full&geometries=geojson')` +
     `.then(function(r){return r.json();}).then(function(j){` +
     `var c=j&&j.routes&&j.routes[0];` +
     `if(!c||!c.geometry||!c.geometry.coordinates)return;` +
     `if(routeLine)map.removeLayer(routeLine);` +
-    `routeLine=L.polyline(c.geometry.coordinates.map(function(p){return [p[1],p[0]];}),{color:'#4f46e5',weight:5}).addTo(map);` +
+    `routeLine=L.polyline(c.geometry.coordinates.map(function(p){return [p[1],p[0]];}),{color:'#000000',weight:5}).addTo(map);` +
     `map.fitBounds(routeLine.getBounds(),{padding:[36,36]});` +
     `postRoute(c.distance/1000,c.duration/60);` +
     `}).catch(function(){ });}` +

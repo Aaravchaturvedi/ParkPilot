@@ -135,8 +135,10 @@ Metro ×2 (:8081 customer, :8082 partner) ──JS bundle──▶ Expo Go / dev
 
 - Everything stateful lives in Compose with named volumes, so restarts keep data
   and `docker compose down -v` gives a byte-clean rebuild for regression runs.
-- Phones reach the backend through the tunnel URL in `API_URL`; on the same LAN you
-  can use `http://<lan-ip>:4000` instead and skip the tunnel entirely.
+- Phones reach the backend directly over LAN (the apps derive the laptop's IP
+  from the Expo dev server). If the phone is on a different network, run
+  `npm run dev:tunnel` and restart Expo — it writes the current cloudflared URL
+  to both `apps/*/.env.local`.
 - The backend container runs `prisma migrate deploy` on boot, so a fresh volume
   self-creates all tables — cloning the repo needs no manual DB setup.
 
@@ -360,10 +362,11 @@ cd apps/partner  && npx expo start --port 8082 # phone 2 (partner)
 ```
 
 - Same WiFi for laptop + phones, or `npx expo start --tunnel`.
-- **Backend reachability:** set `API_URL` in both `apps/*/App.tsx` — your LAN
-  (`http://<lan-ip>:4000`) or a tunnel (`cloudflared tunnel --url http://localhost:4000`).
-  Tunnel hosts are ephemeral: if login suddenly says *cannot reach the server*, re-check
-  `<API_URL>/health` in the phone browser first. Do not commit LAN IPs/keys.
+- **Backend reachability:** no edit needed on LAN — `resolveApiUrl()` derives the
+  laptop's IP from Metro. Off-LAN, run `npm run dev:tunnel` (starts cloudflared
+  and writes `apps/*/.env.local`), then restart Expo. Tunnel hosts are
+  ephemeral: if login says *cannot reach the server*, check `<URL>/health` in the
+  phone browser and re-run the tunnel command. Do not commit LAN IPs/keys.
 - Maps need **no key** (OSM). Expo Go shows everything except native map tiles are
   replaced by the OSM WebView (works in Go). For native tiles use a dev build:
   `npx expo run:android` (see `docs/MAPS_SETUP.md`).
@@ -416,7 +419,7 @@ Typecheck everything: `npm run typecheck -w backend` plus
 | Key / place | Purpose | Notes |
 |---|---|---|
 | `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` (`.env`) | backend wiring | required; see `.env.example` |
-| `API_URL` (`apps/*/App.tsx`) | backend base for both apps | tunnel host or LAN IP; ephemeral — never commit secrets here |
+| `EXPO_PUBLIC_API_URL` (env / `apps/*/.env.local`) | backend base for both apps | optional; unset = auto-detect LAN host. Set for tunnels — ephemeral, never commit |
 | `GOOGLE_MAPS_API_KEY` (env, build-time) | optional legacy Google tiles | unused while maps render OSM; read by `app.config.js` only if set |
 | `packages` (`com.parkpilot.customer/.partner`) | Android identity | needed for key restriction + builds |
 
@@ -426,7 +429,7 @@ Typecheck everything: `npm run typecheck -w backend` plus
 
 | Symptom | Most likely cause → fix |
 |---|---|
-| *Cannot reach the server* at login | Dead tunnel host → open `<API_URL>/health` in the phone browser; restart tunnel, paste new host into both `App.tsx`, reload Expo |
+| *Cannot reach the server* at login | Backend down or stale tunnel URL → open `<API_URL>/health` in the phone browser; start the backend (`npm run dev:backend`) or re-run `npm run dev:tunnel`, then restart Expo |
 | Booking/actions 401 after ~15 min | Old bundle without auto-refresh → reload the app (current code refreshes + retries) |
 | Request accepted but customer still REQUESTED | Stale card → it self-heals: restore-on-open + 8 s poll + tab-focus sync (pre-refresh bundles lack this — reload) |
 | Space invisible nearby | Pinned far away / paused / radius too small → Spaces → *Repin to GPS*, widen radius, *Search this area* |

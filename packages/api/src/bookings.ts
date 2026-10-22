@@ -73,3 +73,16 @@ export async function wallet(): Promise<{ wallet: Wallet }> {
   const { data } = await api().get('/wallet');
   return data;
 }
+
+export async function getOnlineDrivers(): Promise<{ count: number; driverIds: string[] }> {
+  const { data } = await api().get('/bookings/drivers/online');
+  return data;
+}
+
+export async function checkOpenRequests(ids: string[] = []): Promise<{
+  openBookings: Booking[];
+  statusMap: Record<string, string>;
+}> {
+  const { data } = await api().post('/bookings/requests/check', { ids });
+  return data;
+}

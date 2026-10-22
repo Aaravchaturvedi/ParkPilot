@@ -35,7 +35,7 @@ export function ProfileScreen({ onSignOut }: { onSignOut: () => void }): React.J
 
   return (
     <Screen refreshing={loading} onRefresh={() => refresh(false)}>
-      <AppHeader title="You" subtitle="Rider profile" right={<Avatar name={user.name} size={40} />} />
+      <AppHeader title="Profile" right={<Avatar name={user.name} size={40} />} />
       <FadeIn>
         <Card style={styles.hero}>
           <Avatar name={user.name} size={64} />
@@ -56,7 +56,7 @@ export function ProfileScreen({ onSignOut }: { onSignOut: () => void }): React.J
           </View>
           <Divider />
           <View style={styles.stats}>
-            <Stat label="Paid" value={`₹${(summary.asCustomerSpentPaise / 100).toFixed(0)}`} sub="mock payments" />
+            <Stat label="Paid" value={`₹${(summary.asCustomerSpentPaise / 100).toFixed(0)}`} />
           </View>
         </Card>
       ) : (
@@ -66,7 +66,7 @@ export function ProfileScreen({ onSignOut }: { onSignOut: () => void }): React.J
       <Card style={styles.padless}>
         <ListRow title="Member since" right={<Text style={styles.dim}>{new Date(user.createdAt).toLocaleDateString()}</Text>} />
         <Divider />
-        <ListRow title="Rides as" sub="One email = one side" right={<Text style={styles.dim}>{user.role}</Text>} />
+        <ListRow title="Account type" right={<Text style={styles.dim}>{user.role}</Text>} />
       </Card>
       <Button title="Sign out" variant="danger" block onPress={onSignOut} />
     </Screen>
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   hero: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   idCol: { flex: 1, gap: 4 },
   name: { fontSize: theme.type.title, fontWeight: '800', color: theme.color.ink },
-  role: { fontSize: theme.type.small, fontWeight: '700', color: theme.color.brandDark },
+  role: { fontSize: theme.type.small, fontWeight: '700', color: theme.color.ink },
   dim: { color: theme.color.sub, fontSize: 13 },
   stats: { flexDirection: 'row' },
   padless: { paddingHorizontal: 2, paddingVertical: 2 },

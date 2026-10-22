@@ -127,6 +127,19 @@ export async function acceptBooking(bookingId: string, partnerId: string): Promi
   const b = await prisma.booking.findUnique({ where: { id: bookingId }, include: { space: { select: { ownerId: true } } } });
   if (!b) throw coded(404, 'booking_not_found');
   if (b.status !== 'REQUESTED') throw coded(409, 'booking_not_requested');
+
+  // If this is a driver booking, ensure partner does not already have a ride in progress
+  if (b.type === 'DRIVER') {
+    const existingActive = await prisma.booking.findFirst({
+      where: {
+        partnerId,
+        type: 'DRIVER',
+        status: { in: ['ACCEPTED', 'ONGOING'] },
+      },
+    });
+    if (existingActive) throw coded(409, 'partner_has_active_ride');
+  }
+
   // Parking bookings belong to a space: only its owner (or admin) may accept.
   // Driver bookings are open to any partner (first-come, first-served).
   if (b.type === 'PARKING') {

@@ -16,5 +16,5 @@ COPY src ./src
 COPY scripts ./scripts
 RUN npm run build
 EXPOSE 4000
-# Migrate on boot so fresh volumes/deploys always have tables (Day 19).
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/index.js"]
+# Migrate and seed on boot so fresh volumes/deploys always have tables and test accounts.
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/src/index.js"]

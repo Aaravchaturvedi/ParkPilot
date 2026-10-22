@@ -125,15 +125,14 @@ export function MapScreen({ onBookParking, active = true }: { onBookParking: (sp
             <Button title="My location" variant="secondary" onPress={() => locateAndFetch()} disabled={loading} />
           </View>
         </View>
-        <Text style={styles.hint}>Drag the map, then “This area”. Tap a pin's callout to book.</Text>
       </Card>
-      <SectionLabel>{loading ? 'Searching…' : `${list.length} space${list.length === 1 ? '' : 's'} within ${radius} km · nearest first`}</SectionLabel>
+      <SectionLabel>{loading ? 'Searching…' : `${list.length} space${list.length === 1 ? '' : 's'} nearby`}</SectionLabel>
       {spaces === null ? (
         <SkeletonBlock height={180} />
       ) : list.length === 0 && !loading ? (
         <EmptyState
-          title="Nothing parked here"
-          hint="The space may be paused, pinned outside this radius, or listed on another server. Try a bigger radius or Search this area."
+          title="No parking spaces nearby"
+          hint="Try increasing search radius or moving the map."
         />
       ) : (
         <Card style={styles.listCard}>

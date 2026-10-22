@@ -1,3 +1,4 @@
+export * from './config';
 export * from './store/session';
 export * from './storage/sessionStore';
 export * from './socket';

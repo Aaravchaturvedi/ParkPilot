@@ -69,7 +69,7 @@ function booking(id: string): Booking {
   };
 }
 
-function Harness({ initial, online = true }: { initial: Incoming[]; online?: boolean }) {
+function Harness({ initial, online = true, hasActiveRide = false, onGoRide }: { initial: Incoming[]; online?: boolean; hasActiveRide?: boolean; onGoRide?: () => void }) {
   const [incoming, setIncoming] = useState<Incoming[]>(initial);
   const [on, setOn] = useState(online);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -83,6 +83,8 @@ function Harness({ initial, online = true }: { initial: Incoming[]; online?: boo
         incoming={incoming}
         setIncoming={setIncoming}
         onActive={setActiveId}
+        hasActiveRide={hasActiveRide}
+        onGoRide={onGoRide}
       />
       {activeId ? <Text>{activeId}</Text> : null}
     </>
@@ -162,5 +164,27 @@ describe('RequestsScreen', () => {
     fireEvent.press(getByText('Go online'));
     expect(await findByText(/go-online failed|only_partners/i)).toBeTruthy();
     expect(queryByText('Go offline')).toBeNull();
+  });
+
+  it('hides all requests and shows active ride notice when a ride is in progress', () => {
+    const b = booking('bk-in-progress-1');
+    const onGoRide = jest.fn();
+    const { getByText, queryByText, getAllByText } = render(
+      <Harness
+        initial={[{ booking: b, at: Date.now() }]}
+        online={true}
+        hasActiveRide={true}
+        onGoRide={onGoRide}
+      />
+    );
+    // Request card is NOT rendered
+    expect(queryByText('Accept')).toBeNull();
+    expect(queryByText(/you keep/i)).toBeNull();
+    // Ride in progress notice is displayed
+    expect(getAllByText(/ride in progress/i).length).toBeGreaterThanOrEqual(1);
+    expect(getByText(/active trip ongoing/i)).toBeTruthy();
+    // Go to active ride button works
+    fireEvent.press(getByText('Go to active ride'));
+    expect(onGoRide).toHaveBeenCalledTimes(1);
   });
 });

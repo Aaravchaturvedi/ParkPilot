@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { KycStatus } from '../../../../packages/types/src';
 import { submitKyc } from '../../../../packages/api/src/index';
 import { AppHeader, Button, Card, Screen, SectionLabel } from '../../../../packages/ui/src';
@@ -38,22 +39,21 @@ export function KycScreen({ status, onChanged }: { status: KycStatus; onChanged:
             return (
               <View key={s} style={styles.step}>
                 <View style={[styles.bubble, done && styles.done, now && styles.now]}>
-                  <Text style={[styles.bubbleText, (done || now) && styles.on]}>{done ? '✓' : n}</Text>
+                  {done ? (
+                    <Ionicons name="checkmark" size={16} color="#ffffff" />
+                  ) : (
+                    <Text style={[styles.bubbleText, (done || now) && styles.on]}>{n}</Text>
+                  )}
                 </View>
                 <Text style={[styles.label, (done || now) && styles.labelOn]}>{s}</Text>
               </View>
             );
           })}
         </View>
-        <Text style={styles.dim}>Mock: Aadhaar + license + police checks plug in here (Phase B).</Text>
-        {status === 'PENDING' ? <Button title="Submit documents (mock)" block loading={busy} onPress={submit} disabled={busy} /> : null}
-        {status === 'REJECTED' ? <Button title="Resubmit documents (mock)" block loading={busy} onPress={submit} disabled={busy} /> : null}
+        {status === 'PENDING' ? <Button title="Submit documents" block loading={busy} onPress={submit} disabled={busy} /> : null}
+        {status === 'REJECTED' ? <Button title="Resubmit documents" block loading={busy} onPress={submit} disabled={busy} /> : null}
       </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <SectionLabel>What happens next</SectionLabel>
-      <Card>
-        <Text style={styles.dim}>Submitted documents move to review; verified partners get priority dispatch. Rejected ones can resubmit anytime.</Text>
-      </Card>
     </Screen>
   );
 }
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   step: { alignItems: 'center', gap: 4 },
   bubble: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center' },
   done: { backgroundColor: '#16a34a' },
-  now: { backgroundColor: '#4f46e5' },
+  now: { backgroundColor: '#000000' },
   bubbleText: { fontWeight: '800', color: '#6b7280' },
   on: { color: '#fff' },
   label: { fontSize: 12, color: '#9ca3af', fontWeight: '600' },

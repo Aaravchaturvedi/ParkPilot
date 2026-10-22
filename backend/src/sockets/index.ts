@@ -60,6 +60,7 @@ export function initSockets(httpServer: import('http').Server): Server {
     void socket.join(userRoom(id));
     if (isPartner) {
       void socket.join(driverRoom(id));
+      void socket.join('partners');
     }
 
     // Auto-join live booking rooms so status updates arrive even if the
@@ -123,4 +124,5 @@ export function emitBooking(io: Server | undefined, booking: FullBooking): void 
   io.to(bookingRoom(booking.id)).emit('booking:updated', payload);
   io.to(userRoom(booking.customerId)).emit('booking:updated', payload);
   if (booking.partnerId) io.to(userRoom(booking.partnerId)).emit('booking:updated', payload);
+  io.to('partners').emit('booking:updated', payload);
 }

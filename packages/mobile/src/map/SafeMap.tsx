@@ -16,6 +16,7 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   onRegionChangeComplete?: (r: SafeMapRegion) => void;
+  onPress?: (coord: { latitude: number; longitude: number }) => void;
   // Driving route overlay (OSRM, free): {from: you, to: destination}.
   route?: RouteSpec | null;
   onRouteInfo?: (info: { distanceKm: number; durationMin: number } | null) => void;
@@ -45,11 +46,13 @@ function readMarkers(children: React.ReactNode): MarkerSpec[] {
   return out;
 }
 
-export function SafeMapView({ initialRegion, style, children, onRegionChangeComplete, route, onRouteInfo, center }: Props): React.JSX.Element {
+export function SafeMapView({ initialRegion, style, children, onRegionChangeComplete, onPress, route, onRouteInfo, center }: Props): React.JSX.Element {
   const [failed, setFailed] = useState(false);
   const webRef = useRef<WebView>(null);
   const cbRef = useRef(onRegionChangeComplete);
   cbRef.current = onRegionChangeComplete;
+  const pressCbRef = useRef(onPress);
+  pressCbRef.current = onPress;
   const routeCbRef = useRef(onRouteInfo);
   routeCbRef.current = onRouteInfo;
 
@@ -69,10 +72,17 @@ export function SafeMapView({ initialRegion, style, children, onRegionChangeComp
     try {
       const msg = JSON.parse(e.nativeEvent.data) as
         | ({ kind: 'region' } & SafeMapRegion)
+        | { kind: 'click'; latitude: number; longitude: number }
         | { kind: 'route'; distanceKm: number; durationMin: number };
       if (msg.kind === 'route') {
         if (Number.isFinite(msg.distanceKm) && Number.isFinite(msg.durationMin)) {
           routeCbRef.current?.({ distanceKm: msg.distanceKm, durationMin: msg.durationMin });
+        }
+        return;
+      }
+      if (msg.kind === 'click') {
+        if (Number.isFinite(msg.latitude) && Number.isFinite(msg.longitude)) {
+          pressCbRef.current?.({ latitude: msg.latitude, longitude: msg.longitude });
         }
         return;
       }

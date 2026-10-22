@@ -61,6 +61,10 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+export function getApiBaseURL(): string | null {
+  return client?.defaults.baseURL ?? null;
+}
+
 export function getAccessToken(): string | null {
   return accessToken;
 }

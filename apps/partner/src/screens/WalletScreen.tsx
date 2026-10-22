@@ -33,7 +33,7 @@ export function WalletScreen({ active = true }: { active?: boolean }): React.JSX
 
   return (
     <Screen refreshing={loading} onRefresh={() => load(false)}>
-      <AppHeader title="Earnings" subtitle="Payout every 3–4 days · UPI/NEFT (mock)" />
+      <AppHeader title="Earnings" />
       {w ? (
         <>
           <Card style={styles.hero}>
@@ -48,18 +48,14 @@ export function WalletScreen({ active = true }: { active?: boolean }): React.JSX
       ) : (
         <SkeletonBlock height={190} />
       )}
-      <SectionLabel>How it works</SectionLabel>
-      <Card>
-        <Text style={styles.dim}>Each completed timer bills per-minute (1-hr minimum) at ₹150/hr. Your 80% lands here after the customer pays; pending shows rides still running.</Text>
-      </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: 'center', borderColor: '#4f46e5', borderWidth: 1.5 },
-  kicker: { fontSize: 13, fontWeight: '800', color: '#4338ca', textTransform: 'uppercase', letterSpacing: 1 },
+  hero: { alignItems: 'center', borderColor: '#000000', borderWidth: 1 },
+  kicker: { fontSize: 13, fontWeight: '800', color: '#111827', textTransform: 'uppercase', letterSpacing: 1 },
   balance: { fontSize: 52, fontWeight: '800', color: '#111827', fontVariant: ['tabular-nums'] },
   split: { flexDirection: 'row', alignSelf: 'stretch' },
   dim: { color: '#6b7280', fontSize: 13 },

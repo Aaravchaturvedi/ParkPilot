@@ -13,6 +13,7 @@ import pricingRoutes from './routes/pricing';
 import walletRoutes from './routes/wallet';
 import spacesRoutes from './routes/spaces';
 import vehiclesRoutes from './routes/vehicles';
+import { autoSeed } from './services/seed';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -53,7 +54,10 @@ const io: Server = initSockets(server);
 app.set('io', io);
 
 if (require.main === module) {
-  server.listen(PORT, () => console.log(`[backend] http+socket listening on :${PORT}`));
+  server.listen(PORT, () => {
+    console.log(`[backend] http+socket listening on :${PORT}`);
+    void autoSeed();
+  });
 }
 
 export { app, server, io };

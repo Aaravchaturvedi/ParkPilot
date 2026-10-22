@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="bgD" cx="50%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#18181c" />
+      <stop offset="60%" stop-color="#08080a" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+
+    <linearGradient id="refl-maskD" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
+      <stop offset="25%" stop-color="#ffffff" stop-opacity="0.28" />
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0.07" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+    <mask id="m-reflD">
+      <rect x="0" y="285" width="512" height="227" fill="url(#refl-maskD)" />
+    </mask>
+
+    <linearGradient id="horizonD" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="20%" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.65" />
+      <stop offset="80%" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="114" fill="url(#bgD)" />
+  <rect width="512" height="512" rx="114" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="1.5" />
+
+  <!-- 3D Surface Horizon Line -->
+  <line x1="56" y1="285" x2="456" y2="285" stroke="url(#horizonD)" stroke-width="1.5" />
+
+  <!-- 3D Surface Reflections for Both Letters -->
+  <g mask="url(#m-reflD)">
+    <!-- Straight P Reflection -->
+    <g transform="translate(195, 285) scale(0.13, 0.078) translate(-653.5, -47)">
+      <path d="M600 539C947 553 1207 725 1207 1042C1207 1220 1115 1402 907 1491C798 1538 669 1556 535 1556C392 1556 244 1536 110 1511L100 47L686 47ZM588 939C569 939 549 941 531 946L495 1189C523 1199 557 1206 590 1206C689 1206 748 1151 748 1074C748 992 682 939 588 939Z" fill="#ffffff" fill-rule="evenodd" />
+    </g>
+    <!-- Tilted P Reflection -->
+    <g transform="translate(325, 285) skewX(16) scale(0.098, 0.059) translate(-653.5, -47)">
+      <path d="M600 539C947 553 1207 725 1207 1042C1207 1220 1115 1402 907 1491C798 1538 669 1556 535 1556C392 1556 244 1536 110 1511L100 47L686 47ZM588 939C569 939 549 941 531 946L495 1189C523 1199 557 1206 590 1206C689 1206 748 1151 748 1074C748 992 682 939 588 939Z" fill="#ffffff" fill-rule="evenodd" />
+    </g>
+  </g>
+
+  <!-- Straight P (Larger Primary) -->
+  <g transform="translate(195, 285) scale(0.13, -0.13) translate(-653.5, -47)">
+    <path d="M600 539C947 553 1207 725 1207 1042C1207 1220 1115 1402 907 1491C798 1538 669 1556 535 1556C392 1556 244 1536 110 1511L100 47L686 47ZM588 939C569 939 549 941 531 946L495 1189C523 1199 557 1206 590 1206C689 1206 748 1151 748 1074C748 992 682 939 588 939Z" fill="#ffffff" fill-rule="evenodd" />
+  </g>
+
+  <!-- Tilted P (Smaller Companion, Tilted Forward) -->
+  <g transform="translate(325, 285) skewX(-16) scale(0.098, -0.098) translate(-653.5, -47)">
+    <path d="M600 539C947 553 1207 725 1207 1042C1207 1220 1115 1402 907 1491C798 1538 669 1556 535 1556C392 1556 244 1536 110 1511L100 47L686 47ZM588 939C569 939 549 941 531 946L495 1189C523 1199 557 1206 590 1206C689 1206 748 1151 748 1074C748 992 682 939 588 939Z" fill="#ffffff" fill-rule="evenodd" />
+  </g>
+</svg>

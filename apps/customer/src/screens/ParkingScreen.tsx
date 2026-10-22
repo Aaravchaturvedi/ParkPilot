@@ -133,11 +133,10 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
               <StatusPill status={booking.status} />
             </View>
             <Text style={styles.dim}>
-              {space.title} · {hours}h · payment {booking.paymentStatus.toLowerCase()}
+              {space.title} · {hours}h
             </Text>
-            {booking.status === 'REQUESTED' ? <Text style={styles.dim}>Sent to the host — this page updates live when they accept.</Text> : null}
-            {booking.status === 'ACCEPTED' ? <Text style={styles.dim}>Host confirmed — you can pay now.</Text> : null}
-            {canPay ? <Button title="Pay now (mock)" block loading={busy} onPress={pay} disabled={busy} /> : null}
+            {booking.status === 'REQUESTED' ? <Text style={styles.dim}>Waiting for host confirmation…</Text> : null}
+            {canPay ? <Button title={`Pay ₹${((booking.amountPaise || 0) / 100).toFixed(0)}`} block loading={busy} onPress={pay} disabled={busy} /> : null}
           </Card>
         </WizardPage>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -201,12 +200,12 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
 
 const styles = StyleSheet.create({
   map: { height: 240, borderRadius: 16 },
-  route: { color: '#4338ca', fontWeight: '700', fontSize: 13 },
+  route: { color: '#111827', fontWeight: '700', fontSize: 13 },
   dim: { color: '#6b7280', fontSize: 13 },
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   hours: { fontSize: 22, fontWeight: '800', color: '#111827', minWidth: 56, textAlign: 'center' },
-  quoteCard: { borderColor: '#4f46e5', borderWidth: 1.5 },
+  quoteCard: { borderColor: '#000000', borderWidth: 1 },
   split: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   liveTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
   error: { color: '#dc2626' },

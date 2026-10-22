@@ -33,5 +33,5 @@ credentials.json
 .DS_Store
 *.log
 
-# local-only: live cloudflared tunnel URLs live ONLY as uncommitted edits
-# to apps/*/App.tsx API_URL (ephemeral, die on reboot — never commit).
+# local-only: live cloudflared tunnel URLs live ONLY in uncommitted
+# apps/*/.env.local files (written by `npm run dev:tunnel`, ephemeral).

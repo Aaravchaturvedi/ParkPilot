@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatKm, haversineKm } from '../../../../packages/types/src';
 import { AppHeader, Button, Card, EmptyState, FadeIn, Screen, SectionLabel, SegmentedControl, StatusPill } from '../../../../packages/ui/src';
+import { Ionicons } from '@expo/vector-icons';
 import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { connectSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { acceptBooking as restAccept } from '../../../../packages/api/src/index';
@@ -27,6 +28,8 @@ interface Props {
   onDismissed?: (id: string) => void;
   onSync?: () => void | Promise<unknown>;
   active?: boolean;
+  hasActiveRide?: boolean;
+  onGoRide?: () => void;
 }
 
 const FILTERS = [{ label: 'All', km: Infinity }, { label: '≤2 km', km: 2 }, { label: '≤5 km', km: 5 }, { label: '≤10 km', km: 10 }];
@@ -52,7 +55,20 @@ function pickupOf(b: Booking): { lat: number; lng: number } | null {
 // Driver inbox, nearest first. Each request exposes the customer's pickup
 // (where they are); distances are measured from YOUR live GPS via the same
 // haversine math the customer app uses, so both sides agree on "2 km away".
-export function RequestsScreen({ apiURL, token, online, setOnline, incoming, setIncoming, onActive, onDismissed, onSync, active = true }: Props): React.JSX.Element {
+export function RequestsScreen({
+  apiURL,
+  token,
+  online,
+  setOnline,
+  incoming,
+  setIncoming,
+  onActive,
+  onDismissed,
+  onSync,
+  active = true,
+  hasActiveRide = false,
+  onGoRide,
+}: Props): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
@@ -61,9 +77,16 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
   const [toggling, setToggling] = useState(false);
 
   // Whenever the tab becomes visible while online, converge with the ledger
-  // (covers pushes missed while the app was backgrounded).
+  // (covers pushes missed while the app was backgrounded) and continuously
+  // query the DB every 3s so accepted rides auto-delete dynamically.
   useEffect(() => {
-    if (active && online) void onSync?.();
+    if (active && online) {
+      void onSync?.();
+      const interval = setInterval(() => {
+        void onSync?.();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
   }, [active, online, onSync]);
 
   // Own GPS: the ruler every distance is measured with. Refreshed on mount,
@@ -100,7 +123,9 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
 
   // Nearest first; requests without a shared pickup sink to the bottom.
   // A distance filter hides far/unknown pickups (unknown = unmeasurable).
+  // If offline or if a ride is in progress, requests are not visible.
   const visible = useMemo(() => {
+    if (!online || hasActiveRide) return [];
     const rows = incoming.map((i) => {
       const p = pickupOf(i.booking);
       const kmAway = p && me ? haversineKm(me.lat, me.lng, p.lat, p.lng) : null;
@@ -108,7 +133,7 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
     });
     rows.sort((a, b) => (a.kmAway ?? Infinity) - (b.kmAway ?? Infinity));
     return rows.filter((r) => (r.kmAway ?? Infinity) <= maxKm);
-  }, [incoming, me, maxKm]);
+  }, [incoming, me, maxKm, online, hasActiveRide]);
 
   const toggle = (): void => {
     const s = sock(apiURL, token);
@@ -123,6 +148,7 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
         // ignore
       }
       setOnline(false);
+      setIncoming(() => []);
       return;
     }
     // The server only dispatches to registered-online partners: the toggle
@@ -146,6 +172,14 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
   };
 
   const accept = async (id: string): Promise<void> => {
+    if (hasActiveRide) {
+      setError('You cannot accept new rides while a ride is in progress.');
+      return;
+    }
+    if (!online) {
+      setError('You are offline. Please go online first to accept rides.');
+      return;
+    }
     setBusyId(id);
     setError(null);
     // Prefer the socket (server joins us to the booking room + pushes live
@@ -157,6 +191,10 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
         if (ack.ok && ack.booking) {
           remove(id);
           onActive(ack.booking.id);
+          return;
+        }
+        if (ack.error === 'partner_has_active_ride') {
+          setError('You already have a ride in progress. Complete it before accepting another.');
           return;
         }
         // booking_not_requested / already-taken is final: drop the card.
@@ -178,7 +216,9 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
       onActive(booking.id);
     } catch (e) {
       const msg = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
-      if (msg === 'booking_not_requested') {
+      if (msg === 'partner_has_active_ride') {
+        setError('You already have a ride in progress. Complete it before accepting another.');
+      } else if (msg === 'booking_not_requested') {
         remove(id);
         setError('That request was already taken by another partner.');
       } else {
@@ -206,39 +246,61 @@ export function RequestsScreen({ apiURL, token, online, setOnline, incoming, set
     <Screen>
       <AppHeader
         title="Requests"
-        subtitle={online ? (me ? 'Online · nearest first' : 'Online · locating you…') : 'You’re offline'}
+        subtitle={hasActiveRide ? 'Trip in progress' : online ? (me ? 'Online · nearest first' : 'Online · locating you…') : 'You’re offline'}
         right={<View style={[styles.dot, online ? styles.dotOn : styles.dotOff]} />}
       />
       <Card style={[styles.presence, online ? styles.presenceOn : styles.presenceOff]}>
         <View style={styles.presenceCol}>
-          <Text style={styles.presenceTitle}>{online ? 'Accepting rides' : 'Not receiving rides'}</Text>
-          <Text style={styles.dim}>{online ? (me ? `GPS ${me.lat.toFixed(3)}, ${me.lng.toFixed(3)}` : (locNote ?? 'Reading GPS…')) : 'Go online — requests land here automatically.'}</Text>
+          <Text style={styles.presenceTitle}>{hasActiveRide ? 'Ride in progress' : online ? 'Accepting rides' : 'Not receiving rides'}</Text>
+          <Text style={styles.dim}>{hasActiveRide ? 'Finish your ongoing trip first.' : online ? (me ? `GPS ${me.lat.toFixed(3)}, ${me.lng.toFixed(3)}` : (locNote ?? 'Locating…')) : 'Go online to receive requests'}</Text>
         </View>
-        <Button title={toggling ? '…' : online ? 'Go offline' : 'Go online'} small variant={online ? 'secondary' : 'primary'} onPress={toggle} disabled={toggling} />
+        <Button title={toggling ? '…' : online ? 'Go offline' : 'Go online'} small variant={online ? 'secondary' : 'primary'} onPress={toggle} disabled={toggling || hasActiveRide} />
       </Card>
       <View style={styles.headRow}>
-        <Text style={styles.count}>{online ? `${visible.length} request${visible.length === 1 ? '' : 's'}` : 'Inbox'}</Text>
-        {online ? <Button title="Refresh" small variant="secondary" onPress={() => { void locate(); onSync?.(); }} /> : null}
+        <Text style={styles.count}>{hasActiveRide ? 'Active trip ongoing' : online ? `${visible.length} request${visible.length === 1 ? '' : 's'}` : 'Inbox'}</Text>
+        {online && !hasActiveRide ? <Button title="Refresh" small variant="secondary" onPress={() => { void locate(); onSync?.(); }} /> : null}
       </View>
-      <SegmentedControl options={FILTERS.map((f) => ({ value: f.label, label: f.label }))} value={FILTERS.find((f) => f.km === maxKm)?.label ?? 'All'} onChange={(label) => setMaxKm(FILTERS.find((f) => f.label === label)?.km ?? Infinity)} />
-      {online && visible.length === 0 && incoming.length > 0 ? <Text style={styles.dim}>All {incoming.length} request(s) are outside this distance filter — widen it.</Text> : null}
-      {online && incoming.length === 0 ? (
-        <EmptyState title="No requests yet" hint="Stay online — new bookings pop up here automatically, nearest first." />
-      ) : null}
-      {!online && incoming.length === 0 ? <EmptyState title="You're offline" hint="Go online to receive ride requests." /> : null}
-      {visible.map(({ booking, at, kmAway }, i) => (
-        <FadeIn key={booking.id} delay={Math.min(i, 5) * 60}>
-          <RequestCard
-            booking={booking}
-            at={at}
-            kmAway={kmAway}
-            me={me}
-            busy={busyId === booking.id}
-            onAccept={() => accept(booking.id)}
-            onReject={() => reject(booking.id)}
-          />
-        </FadeIn>
-      ))}
+      {hasActiveRide ? (
+        <Card style={styles.activeRideCard}>
+          <View style={styles.activeRideIconRow}>
+            <View style={styles.activeRideIconWrap}>
+              <Ionicons name="car-sport" size={28} color="#000000" />
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.activeRideTitle}>Ride in Progress</Text>
+              <Text style={styles.activeRideHint}>
+                Finish your current trip before accepting new requests.
+              </Text>
+            </View>
+          </View>
+          {onGoRide ? (
+            <Button title="Go to active ride" onPress={onGoRide} />
+          ) : null}
+        </Card>
+      ) : online ? (
+        <>
+          <SegmentedControl options={FILTERS.map((f) => ({ value: f.label, label: f.label }))} value={FILTERS.find((f) => f.km === maxKm)?.label ?? 'All'} onChange={(label) => setMaxKm(FILTERS.find((f) => f.label === label)?.km ?? Infinity)} />
+          {visible.length === 0 && incoming.length > 0 ? <Text style={styles.dim}>No requests within selected filter.</Text> : null}
+          {incoming.length === 0 ? (
+            <EmptyState title="No requests yet" hint="Nearby ride requests will appear here." />
+          ) : null}
+          {visible.map(({ booking, at, kmAway }, i) => (
+            <FadeIn key={booking.id} delay={Math.min(i, 5) * 60}>
+              <RequestCard
+                booking={booking}
+                at={at}
+                kmAway={kmAway}
+                me={me}
+                busy={busyId === booking.id}
+                onAccept={() => accept(booking.id)}
+                onReject={() => reject(booking.id)}
+              />
+            </FadeIn>
+          ))}
+        </>
+      ) : (
+        <EmptyState title="You're offline" hint="Go online to receive and accept ride requests." />
+      )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Screen>
   );
@@ -341,11 +403,41 @@ const styles = StyleSheet.create({
   reqHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   fare: { fontSize: 22, fontWeight: '800', color: '#111827' },
   fareSub: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
-  away: { fontSize: 15, fontWeight: '700', color: '#4338ca' },
+  away: { fontSize: 15, fontWeight: '700', color: '#111827' },
   mapWrap: { gap: 8 },
   map: { height: 180, borderRadius: 12 },
-  route: { color: '#4338ca', fontWeight: '700', fontSize: 13 },
+  route: { color: '#111827', fontWeight: '700', fontSize: 13 },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
   error: { color: '#dc2626' },
+  activeRideCard: {
+    padding: 18,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: '#e4e4e7',
+    backgroundColor: '#ffffff',
+  },
+  activeRideIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  activeRideIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#f4f4f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeRideTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  activeRideHint: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
 });

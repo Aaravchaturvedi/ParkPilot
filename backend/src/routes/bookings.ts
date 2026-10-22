@@ -8,6 +8,8 @@ router.use(requireAuth);
 
 router.post('/', ah(c.create));
 router.get('/', ah(c.list));
+router.get('/drivers/online', ah(c.onlineDrivers));
+router.post('/requests/check', ah(c.checkOpenRequests));
 router.get('/:id', ah(c.get));
 router.patch('/:id/accept', ah(c.accept));
 router.post('/:id/start-otp', ah(c.requestStartOtp));

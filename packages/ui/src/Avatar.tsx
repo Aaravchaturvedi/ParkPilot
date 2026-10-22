@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from './theme';
 
-const PALETTE = ['#4f46e5', '#0d9488', '#c026d3', '#ea580c', '#0284c7', '#65a30d'];
+const PALETTE = ['#09090b', '#18181b', '#27272a', '#3f3f46', '#52525b', '#1c1917'];
 
 export function Avatar({ name, size = 56 }: { name: string; size?: number }): React.JSX.Element {
   const initials = name

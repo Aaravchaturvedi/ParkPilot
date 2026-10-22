@@ -8,6 +8,7 @@ import { formatElapsed, runningCostPaise } from '../../../../packages/types/src'
 import { cancelBooking, listBookings, payBooking, requestStopOtp, verifyStopOtp } from '../../../../packages/api/src/index';
 import { AppHeader, Button, Card, OtpInput, PriceTag, Screen, SectionLabel, StatusPill } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
+import { PaymentModal } from '../components/PaymentModal';
 
 interface DriverPing {
   driverId: string;
@@ -142,7 +143,7 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
   const pickup = booking && booking.pickupLat != null && booking.pickupLng != null
     ? { lat: booking.pickupLat, lng: booking.pickupLng }
     : null;
-  const showLiveMap = (status === 'ACCEPTED' || status === 'ONGOING') && pickup !== null;
+  const showLiveMap = status === 'ACCEPTED' || status === 'ONGOING';
   const mapRegion = pos && pickup
     ? {
         latitude: (pos.lat + pickup.lat) / 2,
@@ -152,7 +153,9 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
       }
     : pickup
       ? { latitude: pickup.lat, longitude: pickup.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 }
-      : { latitude: 28.6139, longitude: 77.209, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+      : pos
+        ? { latitude: pos.lat, longitude: pos.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+        : { latitude: 28.6139, longitude: 77.209, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
   const pay = async (): Promise<void> => {
     setBusy(true);
@@ -161,7 +164,8 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
       const { booking: b } = await payBooking(bookingId);
       setBooking(b);
     } catch {
-      setError('Mock payment failed — the trip may not be payable yet (wait for accept).');
+      setError('Payment failed — please retry.');
+      throw new Error('Payment failed');
     } finally {
       setBusy(false);
     }
@@ -223,41 +227,42 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
         right={status ? <StatusPill status={status} /> : undefined}
       />
 
-      {status === 'ACCEPTED' ? (
-        <Card style={styles.hero}>
-          <Text style={styles.heroKicker}>Driver is on the way</Text>
-          {startOtp ? (
-            <>
-              <Text style={styles.otp}>{startOtp}</Text>
-              <Text style={styles.dim}>Read this code to your driver on arrival — the timer starts on verify. Valid 10 min.</Text>
-            </>
-          ) : (
-            <Text style={styles.dim}>The start code appears here the moment your driver requests it.</Text>
-          )}
-        </Card>
-      ) : null}
-
-      {showLiveMap && pickup ? (
+      {showLiveMap ? (
         <>
-          <SectionLabel>Live location</SectionLabel>
+          <SectionLabel>Live trip location</SectionLabel>
           <Card style={styles.mapCard}>
             <SafeMapView
               key={`trk-${pos ? 'live' : 'wait'}-${frame}`}
               initialRegion={mapRegion}
               style={styles.map}
-              route={pos ? { from: { latitude: pos.lat, longitude: pos.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } } : null}
+              route={pos && pickup ? { from: { latitude: pos.lat, longitude: pos.lng }, to: { latitude: pickup.lat, longitude: pickup.lng } } : null}
               onRouteInfo={setRouteInfo}
             >
-              <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" />
+              {pickup ? <Marker coordinate={{ latitude: pickup.lat, longitude: pickup.lng }} title="Pickup (you)" pinColor="green" /> : null}
               {pos ? <Marker coordinate={{ latitude: pos.lat, longitude: pos.lng }} title="Driver" pinColor="blue" /> : null}
             </SafeMapView>
-            <Text style={styles.dim}>
-              Pickup: {pickupPlace}
-              {pos ? (routeInfo ? ` · driver ${routeInfo.distanceKm.toFixed(1)} km away (~${Math.max(1, Math.round(routeInfo.durationMin))} min)` : ` · driver located (${pings} updates)`) : ' · waiting for driver broadcast…'}
-            </Text>
-            {pos ? <Button title="Recenter" variant="secondary" small onPress={() => setFrame((n) => n + 1)} /> : null}
+            <View style={styles.infoRow}>
+              <Text style={styles.pickupLabel}>{pickup ? `Pickup: ${pickupPlace}` : 'Pickup location'}</Text>
+              <Text style={styles.etaText}>
+                {pos
+                  ? (routeInfo
+                      ? `Driver is ${routeInfo.distanceKm.toFixed(1)} km away (~${Math.max(1, Math.round(routeInfo.durationMin))} min)`
+                      : `Driver located (${pings} updates)`)
+                  : 'Waiting for driver location broadcast…'}
+              </Text>
+            </View>
+            {pos ? <Button title="Recenter map" variant="secondary" small onPress={() => setFrame((n) => n + 1)} /> : null}
           </Card>
         </>
+      ) : null}
+
+      {status === 'ACCEPTED' && startOtp ? (
+        <Card style={styles.compactOtp}>
+          <View style={styles.otpRow}>
+            <Text style={styles.otpLabel}>Start OTP: </Text>
+            <Text style={styles.otpVal}>{startOtp}</Text>
+          </View>
+        </Card>
       ) : null}
 
       {status === 'ONGOING' && booking?.startedAt ? (
@@ -266,43 +271,57 @@ export function TrackingScreen({ apiURL, token, bookingId, onDone }: { apiURL: s
           <Card style={styles.hero}>
             <Text style={styles.timer}>{formatElapsed(elapsedSec)}</Text>
             <PriceTag paise={running.amountPaise} label="Running" />
-            <Text style={styles.dim}>{running.billedMinutes} min billed · 1-hr minimum{booking.estimatedHours ? ` · est ${booking.estimatedHours} hr` : ''}</Text>
+            <Text style={styles.dim}>{running.billedMinutes} min billed</Text>
             {!stopSent ? (
               <Button title="End trip" block loading={busy} onPress={endTrip} disabled={busy} />
             ) : (
               <>
-                <Text style={styles.dim}>Stop code sent to your driver — type the 4-digit code they read back:</Text>
+                <Text style={styles.dim}>Enter the 4-digit code from driver to end trip:</Text>
                 <OtpInput value={stopCode} onChange={(v) => { setStopCode(v); setOtpError(false); }} error={otpError} />
-                <Button title="Confirm end & see bill" block loading={busy} onPress={confirmEnd} disabled={busy} />
+                <Button title="Confirm end" block loading={busy} onPress={confirmEnd} disabled={busy} />
               </>
             )}
           </Card>
         </>
       ) : null}
 
-      <SectionLabel>Bill</SectionLabel>
+      <SectionLabel>Fare</SectionLabel>
       <Card>
-        {booking ? <PriceTag paise={booking.amountPaise} label={status === 'COMPLETED' && booking.billedMinutes ? `Final · ${booking.billedMinutes} min` : 'So far'} /> : null}
+        {booking ? <PriceTag paise={booking.amountPaise} label={status === 'COMPLETED' && booking.billedMinutes ? `Final · ${booking.billedMinutes} min` : 'Current'} /> : null}
         <Text style={styles.dim}>Payment: {booking?.paymentStatus ?? '…'}</Text>
         {status === 'COMPLETED' && booking?.billedMinutes ? (
-          <Text style={styles.dim}>Billed {booking.billedMinutes} min · {(booking.partnerPayoutPaise / 100).toFixed(2)} goes to the driver</Text>
+          <Text style={styles.dim}>Billed {booking.billedMinutes} min</Text>
         ) : null}
-        {canPay && status === 'COMPLETED' ? <Button title="Pay now (mock)" block loading={busy} onPress={pay} disabled={busy} /> : null}
+        {canPay && status === 'COMPLETED' ? <Button title={`Pay ₹${((booking?.amountPaise || 0) / 100).toFixed(0)}`} block loading={busy} onPress={pay} disabled={busy} /> : null}
         {canCancel ? <Button title="Cancel trip" variant="secondary" onPress={cancel} disabled={busy} /> : null}
       </Card>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Back to trips" variant="ghost" onPress={onDone} />
+
+      <PaymentModal
+        visible={status === 'COMPLETED'}
+        booking={booking}
+        onPay={pay}
+        onPaidSuccess={onDone}
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   dim: { color: '#6b7280', fontSize: 13 },
-  hero: { alignItems: 'center', borderColor: '#4f46e5', borderWidth: 1.5 },
-  heroKicker: { fontSize: 13, fontWeight: '800', color: '#4338ca', textTransform: 'uppercase', letterSpacing: 1 },
+  hero: { alignItems: 'center', borderColor: '#000000', borderWidth: 1 },
+  heroKicker: { fontSize: 13, fontWeight: '800', color: '#111827', textTransform: 'uppercase', letterSpacing: 1 },
   otp: { fontSize: 52, fontWeight: '800', letterSpacing: 10, color: '#111827' },
   timer: { fontSize: 48, fontWeight: '800', fontVariant: ['tabular-nums'], color: '#111827' },
   mapCard: { padding: 8, gap: 8 },
-  map: { height: 240, borderRadius: 12 },
+  map: { height: 260, borderRadius: 12 },
+  infoRow: { paddingHorizontal: 4, gap: 4 },
+  pickupLabel: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  etaText: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  compactOtp: { padding: 12, backgroundColor: '#f4f4f5', borderColor: '#e4e4e7', borderWidth: 1 },
+  otpRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  otpLabel: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  otpVal: { fontSize: 20, fontWeight: '900', color: '#15803d', letterSpacing: 3 },
   error: { color: '#dc2626' },
 });
