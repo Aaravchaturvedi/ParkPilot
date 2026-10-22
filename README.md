@@ -18,16 +18,18 @@ Real-time dispatch, live GPS tracking, and mock payments — in one TypeScript m
 1. [What it does](#1-what-it-does)
 2. [Tech stack & why](#2-tech-stack--why)
 3. [Architecture](#3-architecture)
-4. [Runtime topology: how it runs, why containers, when to go managed](#4-runtime-topology-how-it-runs-why-containers-when-to-go-managed)
+4. [Runtime topology & AWS EC2 deployment](#4-runtime-topology--aws-ec2-deployment)
 5. [Monorepo file structure](#5-monorepo-file-structure)
 6. [Domain model & booking lifecycle](#6-domain-model--booking-lifecycle)
 7. [Real-time protocol (Socket.io)](#7-real-time-protocol-socketio)
 8. [REST API reference](#8-rest-api-reference)
 9. [Getting started](#9-getting-started)
-10. [Production gaps & roadmap](#10-production-gaps--roadmap)
-11. [Testing & verification](#11-testing--verification)
-12. [Configuration reference](#12-configuration-reference)
-13. [Troubleshooting](#13-troubleshooting)
+10. [Building standalone Android APKs (EAS)](#10-building-standalone-android-apks-eas)
+11. [Auto-seeding & test accounts](#11-auto-seeding--test-accounts)
+12. [Production gaps & roadmap](#12-production-gaps--roadmap)
+13. [Testing & verification](#13-testing--verification)
+14. [Configuration & security audit](#14-configuration--security-audit)
+15. [Troubleshooting](#15-troubleshooting)
 
 ---
 
@@ -116,9 +118,29 @@ Key invariants (enforced, tested):
 
 ---
 
-## 4. Runtime topology: how it runs, why containers, when to go managed
+## 4. Runtime topology & AWS EC2 deployment
 
-### How it runs today (dev)
+### Production Deployment (AWS EC2)
+
+```
+Phones (Standalone APKs / Expo)            AWS EC2 (Ubuntu 24.04, us-east-1)
+───────────────────────────────            ───────────────────────────────────────
+Customer App (`com.parkpilot.customer`)    Caddy Reverse Proxy (:80, :443 TLS)
+Partner App  (`com.parkpilot.partner`)       │ (Automated Let's Encrypt SSL/TLS cert)
+             │                               │ https://98.88.72.217.sslip.io
+             ▼                               ▼
+       HTTPS / WSS ─────────────────► docker-compose
+                                       ├─ smartdrive-backend  (:4000, Node 20)
+                                       ├─ smartdrive-postgres (:5432, Postgres 16)
+                                       └─ smartdrive-redis    (:6379, Redis 7)
+```
+
+- **Live Host:** `https://98.88.72.217.sslip.io`
+- **Reverse Proxy:** Caddy terminates TLS with official Let's Encrypt certificates, handles HTTP/2, and proxies WebSockets (`ws://`/`wss://`) transparently to the Express/Socket.io backend.
+- **Database & State:** PostgreSQL 16 with EBS persistent volume + Redis 7 with GEO indexing.
+- **Auto-Migrate & Auto-Seed on Startup:** On every container boot, Prisma runs `prisma migrate deploy` followed by `autoSeed()`, ensuring all tables exist and test accounts are ready immediately.
+
+### How it runs locally (dev)
 
 ```
 Laptop                                    Phones (Expo Go / dev builds)
@@ -380,7 +402,53 @@ verify → timer → End → stop code → confirm → bill → pay. Full script
 
 ---
 
-## 10. Production gaps & roadmap
+## 10. Building standalone Android APKs (EAS)
+
+Both mobile applications are configured for standalone Android `.apk` builds via Expo Application Services (EAS Build), without requiring the Expo Go sandbox app on test devices.
+
+### EAS Build Configuration
+- **Profile:** `preview` with `"android": { "buildType": "apk" }` in both `apps/customer/eas.json` and `apps/partner/eas.json`.
+- **EAS Project IDs:**
+  - Customer App: `@aaravchaturvedi/parkpilot-customer` (`dac2cdb5-c96b-4ce7-9c78-6d65f647b307`)
+  - Partner App: `@aaravchaturvedi/parkpilot-partner` (`9d40680d-fa8b-4d82-b7b2-614b530fc2f4`)
+- **Native Network Security:** Configured via `expo-build-properties` plugin with `usesCleartextTraffic: true`.
+- **API URL Resolution (`packages/mobile/src/config.ts`):**
+  1. `EXPO_PUBLIC_API_URL` override (or `extra.apiUrl`).
+  2. Metro dev server host (in development mode `__DEV__`).
+  3. Standalone release builds (`!__DEV__`) automatically default to the live cloud backend (`https://98.88.72.217.sslip.io`).
+  4. Local emulator loopback fallback (`10.0.2.2:4000`) for development emulator runs.
+
+### How to Build
+```bash
+# Build Customer APK
+cd apps/customer
+npx eas-cli build -p android --profile preview
+
+# Build Partner APK
+cd apps/partner
+npx eas-cli build -p android --profile preview
+```
+
+---
+
+## 11. Auto-seeding & test accounts
+
+Every time the backend container starts or restarts, `autoSeed()` in `backend/src/services/seed.ts` runs automatically. It is idempotent (uses `upsert`) and contains automatic retry logic.
+
+### Pre-Seeded Test Accounts
+
+| Role | Email | Password | Phone | Default State |
+|---|---|---|---|---|
+| **Customer 1** | `customer1@gmail.com` | `Password123` | `+919800000001` | KYC Verified, active wallet |
+| **Customer 2** | `customer2@gmail.com` | `Password123` | `+919800000002` | KYC Verified, active wallet |
+| **Customer 3** | `customer3@gmail.com` | `Password123` | `+919800000003` | KYC Verified, active wallet |
+| **Partner 1** | `partner1@gmail.com` | `Password123` | `+919800000011` | KYC Verified, vehicle assigned, GPS space in Bengaluru |
+| **Partner 2** | `partner2@gmail.com` | `Password123` | `+919800000012` | KYC Verified, vehicle assigned |
+| **Partner 3** | `partner3@gmail.com` | `Password123` | `+919800000013` | KYC Verified, vehicle assigned |
+
+---
+
+## 12. Production gaps & roadmap
 
 Deliberate MVP simplifications (all labeled `mock`/Phase in code):
 
@@ -393,43 +461,52 @@ Deliberate MVP simplifications (all labeled `mock`/Phase in code):
 
 ---
 
-## 11. Testing & verification
+## 13. Testing & verification
 
 ```bash
-npx jest __tests__                 # 9 suites: auth errors, login/register screens,
-                                   # requests inbox, ride restore, distance, timer bill,
-                                   # geocode+fallback, OSM template, trip summary
+npm run test:mobile                 # 10 Jest test suites (51 unit tests):
+                                    # auth errors, login/register screens, requests inbox,
+                                    # ride restore, distance, timer bill, geocode+fallback,
+                                    # OSM template, trip summary, and API URL resolution
 BASE=http://localhost:4000 npx tsx backend/scripts/socket-test.ts
 BASE=http://localhost:4000 npx tsx backend/scripts/presence-test.ts
 BASE=http://localhost:4000 npx tsx backend/scripts/dispatch-test.ts
 BASE=http://localhost:4000 npx tsx backend/scripts/location-test.ts
 ```
 
-Also verified live (not just in CI): same-millisecond double-accept → exactly one winner;
-OTP leak test in both directions (socket + REST); full timer loop incl. first-hour minimum;
-repin → 5 km visibility; tunnel login path; rendered Leaflet JS syntax-checked.
-
-Typecheck everything: `npm run typecheck -w backend` plus
-`npx tsc --noEmit -p {apps/customer,apps/partner,packages/{ui,mobile,api,types}}/tsconfig.json`.
+Also verified live (not just in CI):
+- Same-millisecond double-accept → exactly one winner (`409`).
+- OTP leak test in both directions (socket + REST).
+- Full timer loop incl. first-hour minimum.
+- Repin → 5 km visibility.
+- HTTPS TLS verification on AWS EC2 (`curl https://98.88.72.217.sslip.io/health`).
 
 ---
 
-## 12. Configuration reference
+## 14. Configuration & security audit
 
-| Key / place | Purpose | Notes |
+### Security & Secret Isolation
+- **No Private Keys in Git:** Private keys (`*.pem`, `*.key`), keystores (`*.jks`, `*.keystore`), and production environment files (`.env`, `.env.local`) are strictly ignored via `.gitignore` and are not committed to Git history.
+- **Public Identifiers vs Secrets:** The EAS `projectId` in `app.config.js` is a public UUID used by Expo client runtimes to identify OTA update channels (`https://u.expo.dev/${projectId}`). It contains zero administrative permissions and is designed by Expo to be public.
+- **Transport Security:** The production deployment enforces TLS 1.2/1.3 with a valid Let's Encrypt SSL certificate. Sensitive endpoints require JWT access tokens (15-min expiry) with refresh token rotation.
+- **Credential Storage:** User passwords are encrypted with bcrypt (10 salt rounds) before landing in the database; plaintext passwords are never persisted.
+
+| Key / Place | Purpose | Security Policy |
 |---|---|---|
-| `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` (`.env`) | backend wiring | required; see `.env.example` |
-| `EXPO_PUBLIC_API_URL` (env / `apps/*/.env.local`) | backend base for both apps | optional; unset = auto-detect LAN host. Set for tunnels — ephemeral, never commit |
-| `GOOGLE_MAPS_API_KEY` (env, build-time) | optional legacy Google tiles | unused while maps render OSM; read by `app.config.js` only if set |
-| `packages` (`com.parkpilot.customer/.partner`) | Android identity | needed for key restriction + builds |
+| `DATABASE_URL`, `REDIS_URL` | Backend database and cache connection | Kept in server-only `.env`; never committed |
+| `JWT_SECRET` | Signing token secret (≥ 32 chars) | Kept in server-only `.env`; never committed |
+| `EXPO_PUBLIC_API_URL` | Frontend override for API base | Public URL (e.g. `https://98.88.72.217.sslip.io`) |
+| `EAS_PROJECT_ID` | Expo EAS Application ID | Public identifier in `app.config.js` |
+| `*.pem` / SSH Keys | EC2 server administration | Kept in local machine secure folder (`chmod 400`); never committed |
 
 ---
 
-## 13. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Most likely cause → fix |
 |---|---|
-| *Cannot reach the server* at login | Backend down or stale tunnel URL → open `<API_URL>/health` in the phone browser; start the backend (`npm run dev:backend`) or re-run `npm run dev:tunnel`, then restart Expo |
+| *Cannot reach the server* on Android APK | App was attempting unencrypted HTTP on Android 9+ → Use the latest build with `https://98.88.72.217.sslip.io` and `expo-build-properties` cleartext support. |
+| *Cannot reach the server* in local Expo Go | Backend down or stale tunnel URL → open `<API_URL>/health` in the phone browser; start the backend (`npm run dev:backend`) or re-run `npm run dev:tunnel`, then restart Expo |
 | Booking/actions 401 after ~15 min | Old bundle without auto-refresh → reload the app (current code refreshes + retries) |
 | Request accepted but customer still REQUESTED | Stale card → it self-heals: restore-on-open + 8 s poll + tab-focus sync (pre-refresh bundles lack this — reload) |
 | Space invisible nearby | Pinned far away / paused / radius too small → Spaces → *Repin to GPS*, widen radius, *Search this area* |
