@@ -3,10 +3,9 @@
 // Without a key, Android renders a black/empty tile grid — markers and UI
 // still work, which is exactly the "black screen" symptom.
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
-// Public backend URL override (e.g. a cloudflared tunnel). Leave unset on a
-// shared LAN — the app then derives the laptop's IP from the Expo dev server.
-const API_URL = process.env.EXPO_PUBLIC_API_URL || '';
-const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID || process.env.EXPO_PUBLIC_EAS_PROJECT_ID || '';
+// Public backend URL override (e.g. AWS deployment or cloudflared tunnel).
+const API_URL = process.env.EXPO_PUBLIC_API_URL || (process.env.EAS_BUILD ? 'http://98.88.72.217' : '');
+const EAS_PROJECT_ID = 'dac2cdb5-c96b-4ce7-9c78-6d65f647b307';
 
 module.exports = function () {
   return {
@@ -27,13 +26,15 @@ module.exports = function () {
       policy: 'appVersion',
     },
     updates: {
-      url: EAS_PROJECT_ID ? `https://u.expo.dev/${EAS_PROJECT_ID}` : undefined,
+      url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
       fallbackToCacheTimeout: 0,
       checkAutomatically: 'ON_LOAD',
     },
     extra: {
       apiUrl: API_URL,
-      ...(EAS_PROJECT_ID ? { eas: { projectId: EAS_PROJECT_ID } } : {}),
+      eas: {
+        projectId: EAS_PROJECT_ID,
+      },
     },
     android: {
       package: 'com.parkpilot.customer',

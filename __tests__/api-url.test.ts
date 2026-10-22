@@ -38,9 +38,19 @@ describe('resolveApiUrl', () => {
     );
   });
 
-  it('falls back to the emulator loopback without any dev host', () => {
+  it('falls back to the emulator loopback without any dev host in dev mode', () => {
     expect(resolveApiUrl()).toBe(
       Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000',
     );
+  });
+
+  it('falls back to the production API URL in standalone release builds', () => {
+    const prevDev = (global as any).__DEV__;
+    try {
+      (global as any).__DEV__ = false;
+      expect(resolveApiUrl()).toBe('http://98.88.72.217');
+    } finally {
+      (global as any).__DEV__ = prevDev;
+    }
   });
 });

@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { NativeModules, Platform } from 'react-native';
 
 const BACKEND_PORT = 4000;
+const PROD_API_URL = 'http://98.88.72.217';
 
 // Expo tunnel/ngrok hosts only forward Metro (port 8081); they do NOT proxy
 // the backend, so they must never be reused as the API host.
@@ -41,7 +42,8 @@ function bundleHost(): string | null {
  *    so they belong in `.env.local`, never hardcoded in App.tsx.
  * 2. The Expo dev-server host — works out of the box when phone and laptop are
  *    on the same WiFi (Metro already knows the laptop's LAN IP).
- * 3. Emulator/simulator loopbacks.
+ * 3. In standalone release builds (!__DEV__), the production cloud backend.
+ * 4. Emulator/simulator loopbacks in local development (__DEV__).
  *
  * Symptom this prevents: an old tunnel hostname leaves both apps showing
  * "Cannot reach the server" at login even though the backend is healthy.
@@ -54,6 +56,11 @@ export function resolveApiUrl(): string {
 
   const host = expoDevHost() || bundleHost();
   if (host) return `http://${host}:${BACKEND_PORT}`;
+
+  // In standalone release builds (no Metro dev server), default to the live cloud backend
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) {
+    return PROD_API_URL;
+  }
 
   // Android emulators reach the host machine through 10.0.2.2, not localhost.
   if (Platform.OS === 'android') return `http://10.0.2.2:${BACKEND_PORT}`;
