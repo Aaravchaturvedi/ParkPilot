@@ -48,7 +48,7 @@ describe('resolveApiUrl', () => {
     const prevDev = (global as any).__DEV__;
     try {
       (global as any).__DEV__ = false;
-      expect(resolveApiUrl()).toBe('http://98.88.72.217');
+      expect(resolveApiUrl()).toBe('https://98.88.72.217.sslip.io');
     } finally {
       (global as any).__DEV__ = prevDev;
     }

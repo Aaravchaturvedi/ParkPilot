@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { NativeModules, Platform } from 'react-native';
 
 const BACKEND_PORT = 4000;
-const PROD_API_URL = 'http://98.88.72.217';
+const PROD_API_URL = 'https://98.88.72.217.sslip.io';
 
 // Expo tunnel/ngrok hosts only forward Metro (port 8081); they do NOT proxy
 // the backend, so they must never be reused as the API host.

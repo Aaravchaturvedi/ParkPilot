@@ -4,7 +4,7 @@
 // still work, which is exactly the "black screen" symptom.
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 // Public backend URL override (e.g. AWS deployment or cloudflared tunnel).
-const API_URL = process.env.EXPO_PUBLIC_API_URL || (process.env.EAS_BUILD ? 'http://98.88.72.217' : '');
+const API_URL = process.env.EXPO_PUBLIC_API_URL || (process.env.EAS_BUILD ? 'https://98.88.72.217.sslip.io' : '');
 const EAS_PROJECT_ID = 'dac2cdb5-c96b-4ce7-9c78-6d65f647b307';
 
 module.exports = function () {
@@ -63,6 +63,14 @@ module.exports = function () {
       },
     },
     plugins: [
+      [
+        'expo-build-properties',
+        {
+          android: {
+            usesCleartextTraffic: true,
+          },
+        },
+      ],
       [
         'expo-location',
         {
