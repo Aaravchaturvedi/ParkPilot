@@ -66,61 +66,13 @@ ParkPilot solves two critical metropolitan transportation problems through a uni
 
 ## 🏛 System Architecture
 
-The monorepo uses a decoupled micro-modular architecture connecting cross-platform mobile apps to an event-driven Node.js backend backed by persistent PostgreSQL and in-memory Redis.
+The monorepo uses a decoupled micro-modular architecture connecting cross-platform mobile apps to an event-driven Node.js backend backed by persistent PostgreSQL and in-memory Redis:
 
-```mermaid
-graph TB
-    subgraph Clients["📱 Cross-Platform Client Applications (Expo / React Native)"]
-        CA["Customer App<br/>(apps/customer)"]
-        PA["Partner App<br/>(apps/partner)"]
-    end
-
-    subgraph Packages["📦 Shared Monorepo Packages"]
-        PKG_UI["ui<br/>(Design System & Physics)"]
-        PKG_MOB["mobile<br/>(Map, Sockets, Session)"]
-        PKG_API["api<br/>(Axios + Interceptors)"]
-        PKG_TYP["types<br/>(Domain Contracts & Math)"]
-    end
-
-    CA --> PKG_UI & PKG_MOB & PKG_API & PKG_TYP
-    PA --> PKG_UI & PKG_MOB & PKG_API & PKG_TYP
-
-    subgraph Gateway["⚡ API Gateway & Real-time Layer (Port 4000)"]
-        REST["Express REST API<br/>(/auth, /bookings, /spaces, /wallet)"]
-        WS["Socket.io Cluster<br/>(Rooms, Acks, Location, Fan-out)"]
-    end
-
-    PKG_API -->|HTTPS / REST| REST
-    PKG_MOB -->|WebSockets| WS
-
-    subgraph Services["⚙️ Backend Domain Services"]
-        SVC_AUTH["Auth & JWT Service"]
-        SVC_SPACES["Spaces Engine<br/>(Realtime Sync)"]
-        SVC_DISPATCH["Dispatch & GEO Match"]
-        SVC_BOOKING["Booking & Timer Engine"]
-        SVC_OTP["Dual OTP Gate"]
-        SVC_LEDGER["Wallet & Ledger"]
-    end
-
-    REST --> SVC_AUTH & SVC_SPACES & SVC_DISPATCH & SVC_BOOKING & SVC_OTP & SVC_LEDGER
-    WS --> SVC_DISPATCH & SVC_OTP & SVC_SPACES
-
-    subgraph Storage["💾 State & Persistence Layer"]
-        PG[("PostgreSQL 16<br/>Prisma ORM<br/>(Persistent Booking Ledger)")]
-        REDIS[("Redis 7<br/>ioredis<br/>(GEO Index, Presence, TTL fixes)")]
-    end
-
-    SVC_AUTH & SVC_SPACES & SVC_BOOKING & SVC_OTP & SVC_LEDGER --> PG
-    SVC_DISPATCH & WS --> REDIS
-
-    subgraph External["🗺️ Keyless Free External Services"]
-        OSM["OpenStreetMap Tiles<br/>(Zero-API-key WebView)"]
-        OSRM["OSRM Routing Engine<br/>(Driving Polylines & ETAs)"]
-        NOM["Nominatim Geocoder<br/>(Reverse Geocoding)"]
-    end
-
-    PKG_MOB --> OSM & OSRM & NOM
-```
+- **Client Layer (`apps/*`)**: Two dedicated Expo React Native applications for Customers and Partners sharing design system tokens and navigation patterns.
+- **Shared Packages (`packages/*`)**: Reusable domain logic, API clients with transparent 401 token refresh, custom Leaflet map bridge, and UI components.
+- **API Gateway & Real-time Layer**: Express REST services alongside a Socket.io WebSocket cluster managing private and shared event rooms.
+- **Persistence & State**: PostgreSQL 16 managed via Prisma ORM for ACID transaction ledgers, paired with Redis 7 for high-speed geospatial indexing (`GEOADD`/`GEORADIUS`) and driver presence.
+- **Mapping & Routing**: Zero-cost, keyless OpenStreetMap tile server with OSRM driving polyline and ETA engine.
 
 ---
 
@@ -128,53 +80,25 @@ graph TB
 
 ![ParkPilot Mobility Lifecycle](docs/workflow-diagram.png)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Customer
-    participant GW as Gateway / Backend
-    participant R as Redis (GEO)
-    actor P as Partner / Driver
-    participant DB as PostgreSQL Ledger
+### End-to-End Workflow Stages
 
-    Note over C,P: 1. Radius Search & Parking / Driver Dispatch
-    C->>GW: POST /bookings (DRIVER / PARKING)
-    GW->>DB: Create Booking [REQUESTED]
-    GW->>R: Query nearby drivers within 5km (GEORADIUS)
-    GW-->>P: Socket push: booking:request (nearest-first)
-
-    Note over C,P: 2. Atomic Acceptance
-    P->>GW: PATCH /bookings/:id/accept
-    GW->>DB: Atomic UPDATE WHERE status='REQUESTED'
-    Note over GW: First-wins (200 OK); racers receive 409
-    GW-->>C: Socket push: booking:accepted [ACCEPTED]
-
-    Note over C,P: 3. Driver Live Navigation & Start OTP Handshake
-    P->>GW: Socket: driver:location {lat, lng} (0.5Hz)
-    GW-->>C: Socket: driver:moved {lat, lng} (Live Car Pin)
-    P->>GW: POST /bookings/:id/start-otp (Partner taps "Reached")
-    GW-->>C: Socket: booking:start-otp (ONLY sent to Customer)
-    C-->>P: Customer reads 4-digit code aloud
-    P->>GW: POST /bookings/:id/start-verify {otp}
-    GW->>DB: Update Booking [ONGOING], startedAt = now()
-    GW-->>C: Socket: booking:updated [ONGOING]
-
-    Note over C,P: 4. Real-time Elapsed Timer & Running Cost
-    loop Every Second
-        C->>C: Calculate runningCostPaise = max(60m, ceil(sec/60)) * ₹150/hr
-        P->>P: Calculate runningPayoutPaise (80% platform split)
-    end
-
-    Note over C,P: 5. End Trip & Stop OTP Handshake
-    C->>GW: POST /bookings/:id/stop-otp (Customer taps "End Trip")
-    GW-->>P: Socket: booking:stop-otp (ONLY sent to Partner)
-    P-->>C: Partner reads 4-digit code aloud
-    C->>GW: POST /bookings/:id/stop-verify {otp}
-    GW->>DB: Update Booking [COMPLETED], compute exact final fare
-    GW-->>C: Display Final Bill & Payment Modal
-    C->>GW: PATCH /bookings/:id/pay
-    GW->>DB: Status [PAID] -> Wallet credited
-```
+1. **Discovery & Radius Search**:
+   - Customer searches nearby parking or drivers across 5–100 km radial zones.
+   - Server performs geospatial matching against Redis GEO (drivers) and PostgreSQL (parking spaces).
+2. **Atomic Dispatch & Acceptance**:
+   - Open bookings are dispatched to nearest online partners.
+   - Race-safe atomic acceptance serialized at the database level (`UPDATE ... WHERE status='REQUESTED'`); exactly one winner gets `200 OK`, while others receive `409 Conflict`.
+3. **Driver Arrival & Start OTP Verification**:
+   - Partner arrives at pickup location and triggers "Reached".
+   - Server mints a 4-digit **Start OTP** delivered strictly to the customer's personal socket room.
+   - Customer recites the code; partner enters it to transition the booking to `ONGOING` and start the timer.
+4. **Live GPS Tracking & Elapsed Fare Metering**:
+   - Partner broadcasts GPS coordinates at ~0.5 Hz to the tracking room.
+   - Both client and server calculate running costs in real-time ($₹150$/hr base rate with integer paise math and first-hour minimum).
+5. **Trip Completion, Stop OTP & Settlement**:
+   - Customer initiates "End Trip"; server mints a 4-digit **Stop OTP** delivered strictly to the partner.
+   - Partner recites the code; customer verifies it on their device.
+   - Server seals the booking as `COMPLETED`, computes final bill splits (80% partner payout, 20% platform commission), and triggers payment settlement.
 
 ---
 
