@@ -13,17 +13,11 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://98.88.72.217.sslip.io"
       }
     },
     "production": {
       "channel": "production",
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://98.88.72.217.sslip.io"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

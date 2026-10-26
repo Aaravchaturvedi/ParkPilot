@@ -44,13 +44,9 @@ describe('resolveApiUrl', () => {
     );
   });
 
-  it('falls back to the production API URL in standalone release builds', () => {
-    const prevDev = (global as any).__DEV__;
-    try {
-      (global as any).__DEV__ = false;
-      expect(resolveApiUrl()).toBe('https://98.88.72.217.sslip.io');
-    } finally {
-      (global as any).__DEV__ = prevDev;
-    }
+  it('falls back to the emulator/local loopback when no dev host is available', () => {
+    expect(resolveApiUrl()).toBe(
+      Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000',
+    );
   });
 });

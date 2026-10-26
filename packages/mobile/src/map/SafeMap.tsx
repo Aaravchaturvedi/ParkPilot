@@ -11,6 +11,16 @@ import {
 
 export type { MarkerSpec, RouteSpec, SafeMapRegion };
 
+export interface MarkerProps {
+  coordinate?: { latitude: number; longitude: number };
+  title?: string;
+  pinColor?: string;
+}
+
+export function Marker(_props: MarkerProps): React.JSX.Element | null {
+  return null;
+}
+
 interface Props {
   initialRegion: SafeMapRegion;
   style?: StyleProp<ViewStyle>;

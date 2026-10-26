@@ -18,7 +18,7 @@ Real-time dispatch, live GPS tracking, and mock payments — in one TypeScript m
 1. [What it does](#1-what-it-does)
 2. [Tech stack & why](#2-tech-stack--why)
 3. [Architecture](#3-architecture)
-4. [Runtime topology & AWS EC2 deployment](#4-runtime-topology--aws-ec2-deployment)
+4. [Runtime topology (Local development & demo)](#4-runtime-topology-local-development--demo)
 5. [Monorepo file structure](#5-monorepo-file-structure)
 6. [Domain model & booking lifecycle](#6-domain-model--booking-lifecycle)
 7. [Real-time protocol (Socket.io)](#7-real-time-protocol-socketio)
@@ -118,29 +118,7 @@ Key invariants (enforced, tested):
 
 ---
 
-## 4. Runtime topology & AWS EC2 deployment
-
-### Production Deployment (AWS EC2)
-
-```
-Phones (Standalone APKs / Expo)            AWS EC2 (Ubuntu 24.04, us-east-1)
-───────────────────────────────            ───────────────────────────────────────
-Customer App (`com.parkpilot.customer`)    Caddy Reverse Proxy (:80, :443 TLS)
-Partner App  (`com.parkpilot.partner`)       │ (Automated Let's Encrypt SSL/TLS cert)
-             │                               │ https://98.88.72.217.sslip.io
-             ▼                               ▼
-       HTTPS / WSS ─────────────────► docker-compose
-                                       ├─ smartdrive-backend  (:4000, Node 20)
-                                       ├─ smartdrive-postgres (:5432, Postgres 16)
-                                       └─ smartdrive-redis    (:6379, Redis 7)
-```
-
-- **Live Host:** `https://98.88.72.217.sslip.io`
-- **Reverse Proxy:** Caddy terminates TLS with official Let's Encrypt certificates, handles HTTP/2, and proxies WebSockets (`ws://`/`wss://`) transparently to the Express/Socket.io backend.
-- **Database & State:** PostgreSQL 16 with EBS persistent volume + Redis 7 with GEO indexing.
-- **Auto-Migrate & Auto-Seed on Startup:** On every container boot, Prisma runs `prisma migrate deploy` followed by `autoSeed()`, ensuring all tables exist and test accounts are ready immediately.
-
-### How it runs locally (dev)
+## 4. Runtime topology (Local development & demo)
 
 ```
 Laptop                                    Phones (Expo Go / dev builds)
@@ -414,9 +392,7 @@ Both mobile applications are configured for standalone Android `.apk` builds via
 - **Native Network Security:** Configured via `expo-build-properties` plugin with `usesCleartextTraffic: true`.
 - **API URL Resolution (`packages/mobile/src/config.ts`):**
   1. `EXPO_PUBLIC_API_URL` override (or `extra.apiUrl`).
-  2. Metro dev server host (in development mode `__DEV__`).
-  3. Standalone release builds (`!__DEV__`) automatically default to the live cloud backend (`https://98.88.72.217.sslip.io`).
-  4. Local emulator loopback fallback (`10.0.2.2:4000`) for development emulator runs.
+  3. Local emulator loopback fallback (`10.0.2.2:4000`) or `localhost:4000`.
 
 ### How to Build
 ```bash
@@ -479,25 +455,23 @@ Also verified live (not just in CI):
 - OTP leak test in both directions (socket + REST).
 - Full timer loop incl. first-hour minimum.
 - Repin → 5 km visibility.
-- HTTPS TLS verification on AWS EC2 (`curl https://98.88.72.217.sslip.io/health`).
+- Local health check (`curl http://localhost:4000/health`).
 
 ---
 
 ## 14. Configuration & security audit
 
 ### Security & Secret Isolation
-- **No Private Keys in Git:** Private keys (`*.pem`, `*.key`), keystores (`*.jks`, `*.keystore`), and production environment files (`.env`, `.env.local`) are strictly ignored via `.gitignore` and are not committed to Git history.
+- **No Private Keys in Git:** Keystores (`*.jks`, `*.keystore`) and environment files (`.env`, `.env.local`) are strictly ignored via `.gitignore` and are not committed to Git history.
 - **Public Identifiers vs Secrets:** The EAS `projectId` in `app.config.js` is a public UUID used by Expo client runtimes to identify OTA update channels (`https://u.expo.dev/${projectId}`). It contains zero administrative permissions and is designed by Expo to be public.
-- **Transport Security:** The production deployment enforces TLS 1.2/1.3 with a valid Let's Encrypt SSL certificate. Sensitive endpoints require JWT access tokens (15-min expiry) with refresh token rotation.
 - **Credential Storage:** User passwords are encrypted with bcrypt (10 salt rounds) before landing in the database; plaintext passwords are never persisted.
 
 | Key / Place | Purpose | Security Policy |
 |---|---|---|
 | `DATABASE_URL`, `REDIS_URL` | Backend database and cache connection | Kept in server-only `.env`; never committed |
 | `JWT_SECRET` | Signing token secret (≥ 32 chars) | Kept in server-only `.env`; never committed |
-| `EXPO_PUBLIC_API_URL` | Frontend override for API base | Public URL (e.g. `https://98.88.72.217.sslip.io`) |
+| `EXPO_PUBLIC_API_URL` | Frontend override for API base | Tunnel or custom IP (e.g. `http://192.168.1.5:4000`) |
 | `EAS_PROJECT_ID` | Expo EAS Application ID | Public identifier in `app.config.js` |
-| `*.pem` / SSH Keys | EC2 server administration | Kept in local machine secure folder (`chmod 400`); never committed |
 
 ---
 
@@ -505,7 +479,7 @@ Also verified live (not just in CI):
 
 | Symptom | Most likely cause → fix |
 |---|---|
-| *Cannot reach the server* on Android APK | App was attempting unencrypted HTTP on Android 9+ → Use the latest build with `https://98.88.72.217.sslip.io` and `expo-build-properties` cleartext support. |
+| *Cannot reach the server* on Android APK / Emulator | App trying wrong IP → verify local backend is running on `:4000` or use `10.0.2.2:4000` for Android emulator. |
 | *Cannot reach the server* in local Expo Go | Backend down or stale tunnel URL → open `<API_URL>/health` in the phone browser; start the backend (`npm run dev:backend`) or re-run `npm run dev:tunnel`, then restart Expo |
 | Booking/actions 401 after ~15 min | Old bundle without auto-refresh → reload the app (current code refreshes + retries) |
 | Request accepted but customer still REQUESTED | Stale card → it self-heals: restore-on-open + 8 s poll + tab-focus sync (pre-refresh bundles lack this — reload) |

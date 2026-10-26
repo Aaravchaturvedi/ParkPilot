@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Marker } from 'react-native-maps';
-import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { Marker, SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import type { Booking, BookingStatus, LatLng } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';

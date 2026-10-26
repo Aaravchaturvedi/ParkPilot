@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Linking, Alert } from 'react-native';
-import { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import type { Booking } from '../../../../packages/types/src';
 import { formatElapsed, runningCostPaise } from '../../../../packages/types/src';
@@ -9,7 +8,7 @@ import { AppHeader, Button, Card, OtpInput, PriceTag, Screen, SectionLabel, Stat
 import { Ionicons } from '@expo/vector-icons';
 import { usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
-import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { Marker, SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import { PartnerPaymentModal } from '../components/PartnerPaymentModal';
 
 function sock(apiURL: string, token: string): ReturnType<typeof ensureSocket> {

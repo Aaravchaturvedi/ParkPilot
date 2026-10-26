@@ -3,8 +3,8 @@
 // Without a key, Android renders a black/empty tile grid — markers and UI
 // still work, which is exactly the "black screen" symptom.
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
-// Public backend URL override (e.g. AWS deployment or cloudflared tunnel).
-const API_URL = process.env.EXPO_PUBLIC_API_URL || (process.env.EAS_BUILD ? 'https://98.88.72.217.sslip.io' : '');
+// Backend URL override (e.g. cloudflared tunnel or custom LAN IP).
+const API_URL = process.env.EXPO_PUBLIC_API_URL || '';
 const EAS_PROJECT_ID = '9d40680d-fa8b-4d82-b7b2-614b530fc2f4';
 
 module.exports = function () {

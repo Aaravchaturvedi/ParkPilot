@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
-import { Marker } from 'react-native-maps';
-import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { Marker, SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import { coordsLabel, usePlaceName } from '../../../../packages/mobile/src/map/geocode';
 import type { Booking, ParkingQuote, ParkingSpace } from '../../../../packages/types/src';
 import { createBooking, listBookings, payBooking } from '../../../../packages/api/src/index';

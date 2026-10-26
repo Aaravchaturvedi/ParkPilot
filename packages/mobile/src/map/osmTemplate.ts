@@ -38,6 +38,7 @@ export function pageHtml(region: SafeMapRegion, markers: MarkerSpec[], route?: R
     `<style>html,body,#m{height:100%;margin:0;padding:0}.leaflet-control-attribution{font-size:9px}</style></head><body>` +
     `<div id="m"></div>` +
     `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>` +
+    `window.ReactNativeWebView=window.ReactNativeWebView||{postMessage:function(d){window.parent.postMessage(d,'*');}};` +
     `var map=L.map('m',{zoomControl:false,attributionControl:true}).setView([${region.latitude},${region.longitude}],${zoom});` +
     `L.tileLayer('${TILE_URL}',{maxZoom:19,attribution:'${TILE_ATTR}'}).addTo(map);` +
     `var layer=L.layerGroup().addTo(map);` +

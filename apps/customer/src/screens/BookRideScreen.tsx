@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Marker } from 'react-native-maps';
-import { SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
+import { Marker, SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import * as Location from 'expo-location';
 import type { Booking, BookingStatus, DriverHoursQuote } from '../../../../packages/types/src';
 import { cancelBooking, createBooking, getOnlineDrivers, listBookings, payBooking, quoteDriverHours } from '../../../../packages/api/src/index';
