@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type { Booking, ParkingSpace } from '../../../../packages/types/src';
-import { createSpace, listBookings, mySpaces, updateSpace, acceptBooking } from '../../../../packages/api/src/index';
+import { createSpace, listBookings, mySpaces, updateSpace, deleteSpace, acceptBooking } from '../../../../packages/api/src/index';
 import { AppHeader, Button, Card, EmptyState, FadeIn, Field, Screen, SectionLabel, StatusPill } from '../../../../packages/ui/src';
 import { getSocket, ensureSocket } from '../../../../packages/mobile/src/socket';
 
@@ -65,14 +65,19 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
       if (b.status !== 'REQUESTED') setIncoming((list) => list.filter((x) => x.id !== b.id));
       else setIncoming((list) => (list.some((x) => x.id === b.id) ? list.map((x) => (x.id === b.id ? b : x)) : [b, ...list]));
     };
+    const onSpaceChanged = (): void => {
+      void refresh(true);
+    };
     s.on('booking:request', onRequest);
     s.on('booking:updated', onUpdated);
+    s.on('space:changed', onSpaceChanged);
     return () => {
       s.off('booking:request', onRequest);
       s.off('booking:updated', onUpdated);
+      s.off('space:changed', onSpaceChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiURL, token]);
+  }, [apiURL, token, refresh]);
 
   useEffect(() => {
     if (!active) return;
@@ -141,6 +146,34 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
     }
   };
 
+  const remove = (s: ParkingSpace): void => {
+    const doDelete = async (): Promise<void> => {
+      setError(null);
+      try {
+        await deleteSpace(s.id);
+        await refresh(true);
+      } catch (e) {
+        const msg = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
+        setError(msg === 'cannot_delete_space_with_active_booking' ? 'Cannot delete space with an active booking.' : 'Delete failed.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`Delete "${s.title}"? This cannot be undone.`)) {
+        void doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Space',
+        `Are you sure you want to delete "${s.title}"?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
+        ]
+      );
+    }
+  };
+
   // Move an existing space to your current GPS. Fixes spaces listed before
   // GPS pinning existed (they all sit on the Connaught Place fallback, which
   // is why a nearby customer phone only sees them at 50 km radius).
@@ -204,10 +237,18 @@ export function HostScreen({ active = true, apiURL, token }: { active?: boolean;
             </View>
             <View style={styles.row}>
               <View style={styles.flex}>
-                <Button title={s.isActive ? 'Pause' : 'Activate'} small variant="secondary" onPress={() => toggle(s)} />
+                <Button
+                  title={s.isActive ? 'Pause' : 'Activate'}
+                  small
+                  variant={s.isActive ? 'secondary' : 'primary'}
+                  onPress={() => toggle(s)}
+                />
               </View>
               <View style={styles.flex}>
-                <Button title="Repin to GPS" small variant="secondary" onPress={() => repin(s)} />
+                <Button title="Repin" small variant="secondary" onPress={() => repin(s)} />
+              </View>
+              <View style={styles.flex}>
+                <Button title="Delete" small variant="danger" onPress={() => remove(s)} />
               </View>
             </View>
           </Card>

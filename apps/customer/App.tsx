@@ -129,7 +129,7 @@ function Shell(): React.JSX.Element {
               switches never wipe quote drafts, booking cards, or socket
               listeners. This is the core tab-switching fix. */}
           <View style={tab === 'map' ? styles.tabVisible : styles.tabHidden}>
-            <MapScreen active={tab === 'map'} onBookParking={(s) => setSpace(s)} />
+            <MapScreen active={tab === 'map'} apiURL={API_URL} token={token} onBookParking={(s) => setSpace(s)} />
           </View>
           <View style={tab === 'ride' ? styles.tabVisible : styles.tabHidden}>
             <BookRideScreen

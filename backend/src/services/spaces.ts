@@ -81,3 +81,21 @@ export async function updateSpace(ownerId: string, id: string, patch: SpacePatch
   }
   return prisma.parkingSpace.update({ where: { id }, data });
 }
+
+export async function deleteSpace(ownerId: string, id: string): Promise<ParkingSpace> {
+  const s = await prisma.parkingSpace.findUnique({ where: { id } });
+  if (!s) throw coded(404, 'space_not_found');
+  if (s.ownerId !== ownerId) throw coded(403, 'not_your_space');
+
+  const activeBooking = await prisma.booking.findFirst({
+    where: {
+      spaceId: id,
+      status: { in: ['REQUESTED', 'ACCEPTED', 'ONGOING'] },
+    },
+  });
+  if (activeBooking) {
+    throw coded(409, 'cannot_delete_space_with_active_booking');
+  }
+
+  return prisma.parkingSpace.delete({ where: { id } });
+}

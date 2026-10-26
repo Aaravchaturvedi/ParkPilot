@@ -17,6 +17,7 @@
     "db:seed": "npm run db:seed -w backend",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down -v",
+    "simulators": "bash scripts/launch-simulators.sh",
     "test:mobile": "jest __tests__"
   },
   "engines": {

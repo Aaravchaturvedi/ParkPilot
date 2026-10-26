@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { Marker, SafeMapView } from '../../../../packages/mobile/src/map/SafeMap';
 import { coordsLabel, usePlaceName } from '../../../../packages/mobile/src/map/geocode';
@@ -9,18 +9,30 @@ import { quoteParking } from '../../../../packages/api/src/index';
 import { Button, Card, PriceTag, Screen, StatusPill, WizardHeader, WizardPage } from '../../../../packages/ui/src';
 import { ensureSocket, getSocket } from '../../../../packages/mobile/src/socket';
 import { paiseToRupees } from '../../../../packages/types/src';
+import { PaymentModal } from '../components/PaymentModal';
+import { Ionicons } from '@expo/vector-icons';
 
 const STEPS = ['Your stay', 'Review'];
 
 // Parking booking as pages: stay details + hours on page one, a review page
-// to confirm, then a live status page. Back arrows walk back; the status
-// page's back exits to the map (the booking lives on in Trips).
-export function ParkingScreen({ space, apiURL, token, onDone }: { space: ParkingSpace; apiURL: string; token: string; onDone: () => void }): React.JSX.Element {
+// to confirm, then a live status page with route navigation & animated payments.
+export function ParkingScreen({
+  space,
+  apiURL,
+  token,
+  onDone,
+}: {
+  space: ParkingSpace;
+  apiURL: string;
+  token: string;
+  onDone: () => void;
+}): React.JSX.Element {
   const [step, setStep] = useState(0);
   const [backNav, setBackNav] = useState(false);
   const [hours, setHours] = useState(2);
   const [quote, setQuote] = useState<ParkingQuote | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
@@ -114,38 +126,131 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
       setBooking(b);
     } catch {
       setError('Payment needs the host to accept first — wait, then retry.');
+      throw new Error('Payment failed');
     } finally {
       setBusy(false);
     }
   };
 
-  const canPay = booking != null && booking.paymentStatus === 'PENDING' && (booking.status === 'ACCEPTED' || booking.status === 'ONGOING' || booking.status === 'COMPLETED');
+  const handleOpenGoogleMaps = (): void => {
+    const origin = me ? `${me.lat},${me.lng}` : '';
+    const url = origin
+      ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${space.lat},${space.lng}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${space.lat},${space.lng}`;
+    void Linking.openURL(url).catch(() => undefined);
+  };
+
+  const canPay =
+    booking != null &&
+    booking.paymentStatus === 'PENDING' &&
+    (booking.status === 'ACCEPTED' || booking.status === 'ONGOING' || booking.status === 'COMPLETED');
 
   if (booking) {
     return (
       <Screen>
         <WizardHeader title={space.title} step={1} total={STEPS.length} onBack={onDone} />
         <WizardPage pageKey={`pstatus-${booking.id}-${booking.status}`} fromLeft>
+          {/* Booking Status Card */}
           <Card style={styles.quoteCard}>
             <View style={styles.split}>
-              <Text style={styles.liveTitle}>Booking {booking.id.slice(0, 8)}</Text>
+              <Text style={styles.liveTitle}>Booking #{booking.id.slice(0, 8)}</Text>
               <StatusPill status={booking.status} />
             </View>
             <Text style={styles.dim}>
-              {space.title} · {hours}h
+              {space.title} · {hours}h reserved
             </Text>
-            {booking.status === 'REQUESTED' ? <Text style={styles.dim}>Waiting for host confirmation…</Text> : null}
-            {canPay ? <Button title={`Pay ₹${((booking.amountPaise || 0) / 100).toFixed(0)}`} block loading={busy} onPress={pay} disabled={busy} /> : null}
+            {booking.status === 'REQUESTED' ? (
+              <View style={styles.waitingNotice}>
+                <Ionicons name="time-outline" size={16} color="#d97706" />
+                <Text style={styles.waitingText}>Waiting for host confirmation…</Text>
+              </View>
+            ) : null}
+            {booking.status === 'ACCEPTED' ? (
+              <View style={styles.acceptedNotice}>
+                <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
+                <Text style={styles.acceptedText}>Host accepted! Your space is reserved.</Text>
+              </View>
+            ) : null}
           </Card>
+
+          {/* Map with Route to Space */}
+          <SafeMapView
+            initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.04, longitudeDelta: 0.04 }}
+            style={styles.map}
+            route={
+              me
+                ? {
+                    from: { latitude: me.lat, longitude: me.lng },
+                    to: { latitude: space.lat, longitude: space.lng },
+                  }
+                : null
+            }
+            onRouteInfo={setRouteInfo}
+          >
+            {me ? <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" /> : null}
+            <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} pinColor="red" />
+          </SafeMapView>
+
+          {/* Navigation Card */}
+          <Card style={styles.navCard}>
+            <View style={styles.navInfo}>
+              <Text style={styles.navTitle}>Directions to Parking Spot</Text>
+              <Text style={styles.navAddress}>{spaceAddress}</Text>
+              {routeInfo ? (
+                <Text style={styles.navEta}>
+                  📍 {routeInfo.distanceKm.toFixed(1)} km · ~{Math.max(1, Math.round(routeInfo.durationMin))} min drive
+                </Text>
+              ) : null}
+            </View>
+            <Button
+              title="Open Google Maps"
+              variant="secondary"
+              block
+              icon={<Ionicons name="open-outline" size={16} color="#111827" />}
+              iconPosition="right"
+              onPress={handleOpenGoogleMaps}
+            />
+          </Card>
+
+          {/* Payment Action */}
+          {canPay ? (
+            <Card style={styles.payCard}>
+              <View style={styles.split}>
+                <Text style={styles.payPrompt}>Amount Due</Text>
+                <PriceTag paise={booking.amountPaise || space.pricePerHourPaise * hours} />
+              </View>
+              <Button
+                title={`Pay ₹${(((booking.amountPaise || space.pricePerHourPaise * hours)) / 100).toFixed(0)} Now`}
+                block
+                onPress={() => setShowPaymentModal(true)}
+              />
+            </Card>
+          ) : null}
         </WizardPage>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {/* Animated Payment Modal with UPI / Card & Success Checkmark */}
+        <PaymentModal
+          visible={showPaymentModal}
+          booking={booking}
+          onPay={pay}
+          onPaidSuccess={() => {
+            setShowPaymentModal(false);
+            onDone();
+          }}
+        />
       </Screen>
     );
   }
 
   return (
     <Screen>
-      <WizardHeader title={space.title} step={step} total={STEPS.length} onBack={step > 0 ? () => go(step - 1, true) : onDone} />
+      <WizardHeader
+        title={space.title}
+        step={step}
+        total={STEPS.length}
+        onBack={step > 0 ? () => go(step - 1, true) : onDone}
+      />
       {step === 0 ? (
         <WizardPage pageKey="p0" fromLeft={backNav}>
           <Text style={styles.dim}>
@@ -154,17 +259,37 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
           <SafeMapView
             initialRegion={{ latitude: space.lat, longitude: space.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
             style={styles.map}
-            route={me ? { from: { latitude: me.lat, longitude: me.lng }, to: { latitude: space.lat, longitude: space.lng } } : null}
+            route={
+              me
+                ? { from: { latitude: me.lat, longitude: me.lng }, to: { latitude: space.lat, longitude: space.lng } }
+                : null
+            }
             onRouteInfo={setRouteInfo}
           >
             {me ? <Marker coordinate={{ latitude: me.lat, longitude: me.lng }} title="You" pinColor="blue" /> : null}
             <Marker coordinate={{ latitude: space.lat, longitude: space.lng }} title={space.title} pinColor="red" />
           </SafeMapView>
-          {routeInfo ? (
-            <Text style={styles.route}>Drive: {routeInfo.distanceKm.toFixed(1)} km · ~{Math.max(1, Math.round(routeInfo.durationMin))} min from your location</Text>
-          ) : (
-            <Text style={styles.dim}>Pinned at {coordsLabel(space.lat, space.lng)}</Text>
-          )}
+
+          <View style={styles.routeRow}>
+            <View style={{ flex: 1 }}>
+              {routeInfo ? (
+                <Text style={styles.route}>
+                  Drive: {routeInfo.distanceKm.toFixed(1)} km · ~{Math.max(1, Math.round(routeInfo.durationMin))} min from your location
+                </Text>
+              ) : (
+                <Text style={styles.dim}>Pinned at {coordsLabel(space.lat, space.lng)}</Text>
+              )}
+            </View>
+            <Button
+              title="Google Maps"
+              variant="secondary"
+              icon={<Ionicons name="open-outline" size={13} color="#111827" />}
+              iconPosition="right"
+              small
+              onPress={handleOpenGoogleMaps}
+            />
+          </View>
+
           <Card>
             <Text style={styles.cardTitle}>How long do you need it?</Text>
             <View style={styles.stepper}>
@@ -186,7 +311,9 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
               {quote ? ` · host gets ${(quote.partnerPayoutPaise / 100).toFixed(2)} after ${quote.commissionBps / 100}% fee` : ''}
             </Text>
             {routeInfo ? (
-              <Text style={styles.dim}>About {routeInfo.distanceKm.toFixed(1)} km from you (~{Math.max(1, Math.round(routeInfo.durationMin))} min drive).</Text>
+              <Text style={styles.dim}>
+                About {routeInfo.distanceKm.toFixed(1)} km from you (~{Math.max(1, Math.round(routeInfo.durationMin))} min drive).
+              </Text>
             ) : null}
             <Button title="Confirm parking" block loading={busy} onPress={book} disabled={busy} />
           </Card>
@@ -199,13 +326,47 @@ export function ParkingScreen({ space, apiURL, token, onDone }: { space: Parking
 
 const styles = StyleSheet.create({
   map: { height: 240, borderRadius: 16 },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginVertical: 4,
+  },
   route: { color: '#111827', fontWeight: '700', fontSize: 13 },
   dim: { color: '#6b7280', fontSize: 13 },
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   hours: { fontSize: 22, fontWeight: '800', color: '#111827', minWidth: 56, textAlign: 'center' },
-  quoteCard: { borderColor: '#000000', borderWidth: 1 },
+  quoteCard: { borderColor: '#000000', borderWidth: 1, gap: 6 },
   split: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   liveTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  waitingNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fffbeb',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  waitingText: { color: '#b45309', fontSize: 13, fontWeight: '600' },
+  acceptedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f0fdf4',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  acceptedText: { color: '#15803d', fontSize: 13, fontWeight: '700' },
+  navCard: { gap: 10, marginTop: 4 },
+  navInfo: { gap: 4 },
+  navTitle: { fontSize: 15, fontWeight: '800', color: '#111827' },
+  navAddress: { fontSize: 13, color: '#4b5563' },
+  navEta: { fontSize: 13, fontWeight: '700', color: '#2563eb' },
+  payCard: { gap: 10, borderColor: '#22c55e', borderWidth: 1, backgroundColor: '#f0fdf4' },
+  payPrompt: { fontSize: 16, fontWeight: '800', color: '#166534' },
   error: { color: '#dc2626' },
 });

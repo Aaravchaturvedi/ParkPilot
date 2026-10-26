@@ -123,6 +123,18 @@ export function SafeMapView({
     );
   }
 
+  const handleIframeLoad = () => {
+    try {
+      const payload = JSON.parse(liveKey) as { markers: MarkerSpec[]; route: RouteSpec | null; center: { latitude: number; longitude: number } | null };
+      const win = iframeRef.current?.contentWindow as (Window & { __updateMap?: (data: string) => void }) | null;
+      if (win && typeof win.__updateMap === 'function') {
+        win.__updateMap(JSON.stringify(payload));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <View style={[styles.wrap, style]}>
       <iframe
@@ -130,6 +142,7 @@ export function SafeMapView({
         srcDoc={html}
         title="Map"
         style={{ width: '100%', height: '100%', border: 'none' }}
+        onLoad={handleIframeLoad}
         onError={() => setFailed(true)}
       />
     </View>

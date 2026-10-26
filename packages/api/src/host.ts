@@ -15,3 +15,8 @@ export async function updateSpace(id: string, patch: { isActive?: boolean; price
   const { data } = await api().patch(`/spaces/${id}`, patch);
   return data;
 }
+
+export async function deleteSpace(id: string): Promise<{ ok: boolean; space: ParkingSpace }> {
+  const { data } = await api().delete(`/spaces/${id}`);
+  return data;
+}
