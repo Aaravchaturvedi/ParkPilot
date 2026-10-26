@@ -14,12 +14,14 @@
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D.svg?logo=redis)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker)](https://www.docker.com/)
 [![Jest Tests](https://img.shields.io/badge/Tests-51%20Passed-brightgreen.svg?logo=jest)](https://jestjs.io/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC_BY--SA_4.0-lightgrey.svg)](LICENSE)
 
 **Enterprise-grade dual-sided urban mobility & smart parking platform built as a clean TypeScript monorepo.**  
 *Customers hire professional drivers on-demand by time (timer model with cryptographic dual OTP handshake) and book peer-to-peer parking slots.*  
 *Partners accept ride requests, broadcast live GPS, run the fare timer, and host parking spaces with real-time availability sync.*
 
-[Quick Start](#-quick-start-zero-to-running-in-2-minutes) • [Architecture](#-system-architecture) • [Features](#-key-features--platform-capabilities) • [Real-time Protocol](#-real-time-synchronization-engine) • [API Docs](#-rest-api-reference) • [Testing](#-testing--quality-assurance)
+[Quick Start](#-quick-start-zero-to-running-in-2-minutes) • [Architecture](#-system-architecture) • [Features](#-key-features--platform-capabilities) • [Real-time Protocol](#-real-time-synchronization-engine) • [API Docs](#-rest-api-reference) • [Testing](#-testing--quality-assurance) • [License](#-license)
 
 </div>
 
@@ -444,6 +446,15 @@ To transition ParkPilot from local development to cloud production:
 
 ---
 
+## 📄 License
+
+This project is licensed under dual copyleft and open-source licenses:
+
+* **Source Code**: Licensed under the **[GNU General Public License v3.0 (GPLv3)](LICENSE)**. You are free to run, study, share, and modify the software, provided all derivative works remain free and open-source under the same GPLv3 terms.
+* **Documentation & Media**: Documentation, architecture diagrams, and design assets are licensed under the **[Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/)** license.
+
+---
+
 <div align="center">
-  <sub>Built with ❤️ by the ParkPilot Engineering Team. Open-source under MIT License.</sub>
+  <sub>Built with ❤️ by the ParkPilot Engineering Team. Licensed under <a href="LICENSE">GPLv3</a> and <a href="LICENSE">CC BY-SA 4.0</a>.</sub>
 </div>

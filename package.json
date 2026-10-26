@@ -2,6 +2,7 @@
   "name": "smartdrive-workspace",
   "version": "0.1.0",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "description": "SmartDrive & Park Network - dual-sided urban mobility platform (P2P parking + professional drivers)",
   "workspaces": [
     "apps/*",
